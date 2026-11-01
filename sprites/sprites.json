@@ -1,0 +1,15 @@
+{
+  "characters": [
+    {
+      "id": "example-miner",
+      "name": "Sheet Miner",
+      "file": "example-miner.png",
+      "frameWidth": 32,
+      "frameHeight": 40,
+      "scale": 2,
+      "rows": { "down": 0, "left": 1, "right": 2, "up": 3 },
+      "idle": 0,
+      "walk": [1, 2, 3, 4]
+    }
+  ]
+}

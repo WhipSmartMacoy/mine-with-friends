@@ -21,6 +21,9 @@ Players connect directly browser-to-browser (via [PeerJS](https://peerjs.com)), 
 - Walking up to the cart, forge or anvil and pressing **Space** / **Use** opens its menu. Looking is free — only confirming an option uses an action.
 - The **📊 Stats** panel shows both players' bags and bars, team progress, milestones and the log. On phones the whole game fits on one screen.
 
+## Custom sprites
+You can add your own character, ore and station art as PNG sprite sheets — see [`sprites/README.md`](sprites/README.md). Start from `sprites/example-miner.png` and the labelled `sprites/character-template-guide.png`.
+
 ## Saving
 Each player's progress and the team's total progress are saved in **both** players' browsers. To continue later, the host clicks **Reopen lobby** (same code) and the friend rejoins with that code. If either player's save is further ahead, that one is used. **Export save** downloads a backup.
 

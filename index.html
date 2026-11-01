@@ -777,9 +777,12 @@ const DEFAULT_LOOKS = [
 ];
 function cleanLook(l, seat = 0) {
   const out = { ...DEFAULT_LOOKS[seat] };
-  if (l && typeof l === "object") for (const k of LOOK_KEYS) {
-    const v = Math.floor(Number(l[k]));
-    if (v >= 0 && v < LOOKS[k].length) out[k] = v;
+  if (l && typeof l === "object") {
+    for (const k of LOOK_KEYS) {
+      const v = Math.floor(Number(l[k]));
+      if (v >= 0 && v < LOOKS[k].length) out[k] = v;
+    }
+    if (typeof l.sheet === "string" && SAFE_ID.test(l.sheet)) out.sheet = l.sheet;
   }
   return out;
 }
@@ -872,11 +875,12 @@ function chibiGrid(look, dir, frame) {
   // ---------- neck & head ----------
   rect(g, 14, 16 + b, 17, 17 + b, "s");
   ell(g, hx, 10.5 + b, side ? 6.5 : 6.8, 6.8, "S");
-  if (front) {
-    rect(g, 12, 10 + b, 13, 12 + b, "E"); rect(g, 18, 10 + b, 19, 12 + b, "E");
-    rect(g, 12, 8 + b, 13, 8 + b, "r"); rect(g, 18, 8 + b, 19, 8 + b, "r");          // brows
-    put(g, 16, 12 + b, "s"); put(g, 15, 14 + b, "M"); put(g, 16, 14 + b, "M");      // nose & mouth
-    put(g, 11, 13 + b, "p"); put(g, 20, 13 + b, "p");
+  if (front) {   // diagonal ¾ face: turned slightly to the viewer's right, far eye foreshortened
+    rect(g, 13, 10 + b, 14, 12 + b, "E"); rect(g, 19, 10 + b, 19, 12 + b, "E");
+    rect(g, 12, 8 + b, 14, 8 + b, "r"); rect(g, 19, 8 + b, 20, 8 + b, "r");          // brows
+    put(g, 18, 12 + b, "s"); put(g, 17, 14 + b, "M"); put(g, 18, 14 + b, "M");      // nose & mouth
+    put(g, 12, 13 + b, "p"); put(g, 20, 13 + b, "p");
+    rect(g, 22, 13 + b, 22, 15 + b, "s");                                          // far cheek in shadow
   } else if (side) {
     rect(g, 19, 10 + b, 20, 12 + b, "E"); rect(g, 19, 8 + b, 20, 8 + b, "r");
     put(g, 22, 11 + b, "S");                                                        // nose
@@ -1150,7 +1154,8 @@ function shade(hex, f) {
 
 const spriteCache = {};
 function lookSprites(look) {
-  const key = JSON.stringify(look);
+  if (look.sheet && CUSTOM.characters[look.sheet]) return CUSTOM.characters[look.sheet].sprites;
+  const key = JSON.stringify({ ...look, sheet: undefined });
   if (spriteCache[key]) return spriteCache[key];
   const pal = lookPalette(look), out = {};
   for (const dir of ["down", "up", "right"]) {
@@ -1207,6 +1212,7 @@ function oreNodeGrid(level, stage) {
 }
 const rockCache = {};
 function rockSprite(level, cracks) {
+  if (CUSTOM.rocks) return CUSTOM.rocks(level, Math.min(2, cracks));
   const key = level + ":" + cracks;
   if (rockCache[key]) return rockCache[key];
   const ore = ROCKS[level - 1].color;
@@ -1478,9 +1484,10 @@ function drawRock(r, now) {
   if (!rockBorn[r.id]) rockBorn[r.id] = now;
   const age = Math.min(1, (now - rockBorn[r.id]) / 350);
   const img = rockSprite(r.level, r.cracks || 0);
-  const sc = (0.4 + 0.6 * age) * 1.25, w = TS * sc;
+  const sc = (0.4 + 0.6 * age) * (img.sheet ? 1 : 1.25);
+  const w = img.sheet ? img.width / K * sc : TS * sc, hh = img.sheet ? img.height / K * sc : w;
   ctx.globalAlpha = age;
-  ctx.drawImage(img, r.x * TS + (TS - w) / 2, r.y * TS + TS - w + 2, w, w);
+  ctx.drawImage(img, r.x * TS + (TS - w) / 2, r.y * TS + TS - hh + 2, w, hh);
   ctx.globalAlpha = 1;
   const me = state.players[net.seat], ok = !lockReason(me, r.level);
   const rad = 9 * Math.min(ui, 1.4), bx = r.x * TS + TS - rad, by = r.y * TS + TS - rad;
@@ -1493,8 +1500,9 @@ function drawRock(r, now) {
 function drawStation(st, now) {
   const X = st.x * TS, Y = st.y * TS;
   ctx.fillStyle = "#00000055"; ctx.beginPath(); ctx.ellipse(X + TS / 2, Y + TS - 4, 22, 6, 0, 0, Math.PI * 2); ctx.fill();
-  const big = 1.6, w = TS * big;
-  drawSprite(STATION_ART[st.id], X + (TS - w) / 2, Y + TS - w, w, w);
+  const art = (CUSTOM.stations && CUSTOM.stations[st.id]) || STATION_ART[st.id];
+  if (art.sheet) drawSprite(art, X + TS / 2 - art.width / K / 2, Y + TS - art.height / K);
+  else { const w = TS * 1.6; drawSprite(art, X + (TS - w) / 2, Y + TS - w, w, w); }
   if (st.id === "forge") {                                   // flickering fire glow
     const f = Math.random();
     ctx.fillStyle = `rgba(255,${120 + f * 60 | 0},30,${0.18 + f * 0.12})`;
@@ -1510,17 +1518,19 @@ function drawPlayer(seat, now) {
   const present = seat === net.seat || net.connected;
   const moving = Math.abs(d.x - p.x) + Math.abs(d.y - p.y) > 0.02;
   const set = playerSprites(seat)[p.dir || "down"];
-  const img = moving ? set.walk[Math.floor(now / 110) % 4] : set.stand;
-  const x = d.x * TS, y = d.y * TS - 6 - (SPRITE_H - 32) * S / 2;
+  const img = moving ? set.walk[Math.floor(now / 110) % set.walk.length] : set.stand;
+  const w = img.width / K, h = img.height / K;
+  const cx = d.x * TS + TS / 2, feet = d.y * TS + TS - (img.sheet ? 4 : 6);   // sprites stand on their feet
+  const x = cx - w / 2, y = feet - h + (img.sheet ? 0 : 6);
   const sw = now - swing[seat];
   ctx.globalAlpha = present ? 1 : 0.35;
-  ctx.fillStyle = "#00000055"; ctx.beginPath(); ctx.ellipse(x + TS / 2, d.y * TS + TS - 4, 15, 5, 0, 0, Math.PI * 2); ctx.fill();
-  if (sw < 220) drawSprite(pickSprite(p.pick, "raised"), x + 8 * S, y - 2 * S);
+  ctx.fillStyle = "#00000055"; ctx.beginPath(); ctx.ellipse(cx, d.y * TS + TS - 4, 15, 5, 0, 0, Math.PI * 2); ctx.fill();
+  if (sw < 220) drawSprite(pickSprite(p.pick, "raised"), cx, feet - 66);
   drawSprite(img, x, y);
   if (sw >= 220 && sw < 480) {
     const dir = p.dir || "down";
-    const off = { right: [11, 9], left: [-3, 9], down: [4, 14], up: [4, -1] }[dir];
-    drawSprite(pickSprite(p.pick, dir), x + off[0] * S, y + off[1] * S);
+    const off = { right: [9, -33], left: [-33, -33], down: [-12, -18], up: [-12, -63] }[dir];
+    drawSprite(pickSprite(p.pick, dir), cx + off[0], feet + off[1]);
   }
   ctx.globalAlpha = 1;
   const name = present ? p.name : p.name + " (away)";
@@ -1796,6 +1806,61 @@ document.querySelectorAll("[data-dir]").forEach(b => {
 });
 document.getElementById("act-btn").addEventListener("click", () => act());
 
+// ================= Custom sprite sheets =================
+// Drop PNG sheets into /sprites and list them in sprites/sprites.json (see sprites/README.md).
+// Character sheets: one row per direction (down, left, right, up), column 0 = idle, then walk frames.
+const CUSTOM = { characters: {}, list: [], rocks: null, stations: null };
+const SAFE_FILE = /^[\w.-]+\.png$/i, SAFE_ID = /^[\w-]{1,40}$/;
+function loadImage(src) {
+  return new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = src; });
+}
+function sliceFrame(img, col, row, fw, fh, scale) {
+  const c = mkCanvas(fw * scale, fh * scale), g = c.getContext("2d");
+  g.imageSmoothingEnabled = false;
+  g.drawImage(img, col * fw, row * fh, fw, fh, 0, 0, fw * scale, fh * scale);
+  c.sheet = true;
+  return c;
+}
+async function loadCustomSprites() {
+  let man;
+  try { const res = await fetch("sprites/sprites.json", { cache: "no-cache" }); if (!res.ok) return; man = await res.json(); }
+  catch { return; }
+  for (const ch of man.characters || []) {
+    if (!SAFE_ID.test(ch.id || "") || !SAFE_FILE.test(ch.file || "")) continue;
+    try {
+      const img = await loadImage("sprites/" + ch.file);
+      const fw = ch.frameWidth || 32, fh = ch.frameHeight || 40, sc = ch.scale || 2;
+      const rows = { down: 0, left: 1, right: 2, up: 3, ...(ch.rows || {}) };
+      const idle = ch.idle ?? 0, walk = ch.walk || [1, 2, 3, 4];
+      const sprites = {};
+      for (const d of ["down", "left", "right", "up"])
+        sprites[d] = { stand: sliceFrame(img, idle, rows[d], fw, fh, sc), walk: walk.map(col => sliceFrame(img, col, rows[d], fw, fh, sc)) };
+      CUSTOM.characters[ch.id] = { name: String(ch.name || ch.id).slice(0, 24), sprites };
+      CUSTOM.list.push(ch.id);
+    } catch (e) { console.warn("Couldn't load sprite sheet", ch.file, e); }
+  }
+  if (man.rocks && SAFE_FILE.test(man.rocks.file || "")) {
+    try {
+      const r = man.rocks, img = await loadImage("sprites/" + r.file), cache = {};
+      CUSTOM.rocks = (level, stage) => cache[level + ":" + stage] ||
+        (cache[level + ":" + stage] = sliceFrame(img, level - 1, stage, r.frameWidth || 32, r.frameHeight || 32, r.scale || 2));
+    } catch (e) { console.warn("Couldn't load ore sheet", e); }
+  }
+  if (man.stations && SAFE_FILE.test(man.stations.file || "")) {
+    try {
+      const st = man.stations, img = await loadImage("sprites/" + st.file);
+      CUSTOM.stations = {};
+      (st.order || ["cart", "forge", "anvil"]).forEach((id, i) =>
+        CUSTOM.stations[id] = sliceFrame(img, i, 0, st.frameWidth || 32, st.frameHeight || 32, st.scale || 2));
+    } catch (e) { console.warn("Couldn't load station sheet", e); }
+  }
+}
+// Draw an image to fit a box, keeping its shape, standing on the box's bottom edge.
+function fitDraw(g, img, x, y, w, h) {
+  const sc = Math.min(w / img.width, h / img.height), dw = img.width * sc, dh = img.height * sc;
+  g.drawImage(img, x + (w - dw) / 2, y + h - dh, dw, dh);
+}
+
 // ================= Character creator =================
 let myLook = cleanLook((readJSON(PREFS_KEY) || {}).look, 0);
 
@@ -1809,7 +1874,16 @@ const OPTION_ROWS = [
 ];
 
 function renderOptions() {
-  document.getElementById("options").innerHTML = OPTION_ROWS.map(row => {
+  const sheetRow = CUSTOM.list.length ? `<div class="opt"><div class="opt-title">Character</div><div class="choices">
+      <button class="style ${!myLook.sheet ? "on" : ""}" data-sheet="">Build your own</button>
+      ${CUSTOM.list.map(id => `<button class="style ${myLook.sheet === id ? "on" : ""}" data-sheet="${id}">${escapeHtml(CUSTOM.characters[id].name)}</button>`).join("")}
+    </div></div>` : "";
+  if (myLook.sheet && CUSTOM.characters[myLook.sheet]) {
+    document.getElementById("options").innerHTML = sheetRow + `<div class="opt"><div class="opt-title">Using a sprite-sheet character</div>
+      <small style="color:var(--muted)">This character comes from a sprite sheet in the game's <b>sprites</b> folder. Pick "Build your own" to customise instead.</small></div>`;
+    return drawPreviews();
+  }
+  document.getElementById("options").innerHTML = sheetRow + OPTION_ROWS.map(row => {
     const styles = row.style ? `<div class="choices" style="margin-bottom:6px">${LOOKS[row.style].map((name, i) =>
       `<button class="style ${myLook[row.style] === i ? "on" : ""}" data-opt="${row.style}" data-val="${i}">${name}</button>`).join("")}</div>` : "";
     const hide = (row.style === "hatStyle" && LOOKS.hatStyle[myLook.hatStyle] === "None") ||
@@ -1830,10 +1904,10 @@ function drawPreviews() {
   g.fillStyle = "#8a6440"; for (let i = 0; i < 40; i++) g.fillRect((i * 73) % 300, (i * 37) % 130, 3, 3);
   ["down", "right", "up"].forEach((d, i) => {
     g.fillStyle = "#00000055"; g.beginPath(); g.ellipse(54 + i * 96, 100, 26, 7, 0, 0, Math.PI * 2); g.fill();
-    g.drawImage(sp[d].stand, 14 + i * 96, 4, 80, 100);
+    fitDraw(g, sp[d].stand, 14 + i * 96, 4, 80, 100);
   });
   const mc = document.getElementById("me-preview"), m = mc.getContext("2d");
-  m.imageSmoothingEnabled = false; m.clearRect(0, 0, 48, 48); m.fillStyle = "#a8805a"; m.fillRect(0, 0, 48, 48); m.drawImage(sp.down.stand, 5, -2, 40, 50);
+  m.imageSmoothingEnabled = false; m.clearRect(0, 0, 48, 48); m.fillStyle = "#a8805a"; m.fillRect(0, 0, 48, 48); fitDraw(m, sp.down.stand, 4, 0, 40, 47);
 }
 
 function showCreator() {
@@ -1848,12 +1922,14 @@ function showCreator() {
 }
 
 document.getElementById("options").addEventListener("click", e => {
+  const sb = e.target.closest("[data-sheet]");
+  if (sb) { if (sb.dataset.sheet) myLook.sheet = sb.dataset.sheet; else delete myLook.sheet; return renderOptions(); }
   const b = e.target.closest("[data-opt]");
   if (!b) return;
   myLook[b.dataset.opt] = +b.dataset.val;
   renderOptions();
 });
-document.getElementById("random-btn").onclick = () => { myLook = cleanLook(randomLook()); renderOptions(); };
+document.getElementById("random-btn").onclick = () => { myLook = cleanLook(randomLook()); delete myLook.sheet; renderOptions(); };
 document.getElementById("done-btn").onclick = () => {
   const name = myName();
   const msg = document.getElementById("creator-msg");
@@ -2042,6 +2118,10 @@ state = newGame();
   if (prefs.name) document.getElementById("my-name").value = prefs.name;
   // First visit: build your miner. After that, go straight to the lobby (with an Edit button).
   if (prefs.name && prefs.look) showLobby(); else showCreator();
+  loadCustomSprites().then(() => {
+    if (!CUSTOM.list.length && !CUSTOM.rocks && !CUSTOM.stations) return;
+    if (!document.getElementById("creator").classList.contains("hidden")) renderOptions(); else drawPreviews();
+  });
 }
 requestAnimationFrame(frame);
 </script>
