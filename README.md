@@ -11,15 +11,19 @@ A turn-based online mining game for two players, each on their own device.
 Players connect directly browser-to-browser (via [PeerJS](https://peerjs.com)), so no server or account is needed.
 
 ## How to play
-- Each player is a pixel-art miner. **Walk any time** with WASD / arrow keys (or the on-screen pad on phones). Walking never uses a turn.
-- There are two rooms: the **mine** and the **Upgrades room**. Walk through the UPGRADES door in the mine's top wall (and the MINE door at the bottom of the Upgrades room) to switch. Each player moves between rooms on their own.
-- Each turn has **5 actions**. Each of these uses one action (press **End turn** or **T** to pass early):
-  - **Mine** (mine): face a rock and press **Space** / tap **Mine**. Rocks are random, levels 1–10; green badges are ones you can mine. Success gives gold, XP and the **ore** goes in your bag. A miss cracks the rock, making it easier next time.
-  - **Smelt** (🔥 Forge, Upgrades room): 2 ore + 1 Coal → 1 bar (Stone needs no coal and makes Stone Bricks). Smelt one or all you can afford for a single action.
-  - **Craft** (⚒️ Anvil, Upgrades room): forge your next pickaxe from bars of its material — Stone ×3, Copper ×3, Iron ×3, Silver/Gold/Emerald ×4, Ruby/Diamond/Mythril ×5.
-  - **Buy** (🛒 Upgrade Cart, Upgrades room) with gold: 🍀 Lucky Charm (+15% on 3 swings), 🧨 Dynamite (next swing can't miss), 🥪 Miner's Lunch (half a level of XP), 🪨 Sack of Coal (3 Coal).
-- Walking up to the cart, forge or anvil and pressing **Space** / **Use** opens its menu. Looking is free — only confirming an option uses an action.
-- The **📊 Stats** panel shows both players' bags and bars, team progress, milestones and the log. On phones the whole game fits on one screen.
+**Co-op, real time.** There are no turns — both players play at the same time as a team. Gold, ore and bars go into one **team stash** you both spend from.
+
+- **Walk** with WASD / arrow keys (or the on-screen pad on phones). Two rooms: the **mine** and the **Upgrades room** (walk through the UPGRADES / MINE doors).
+- **Mine** (mine): face a rock and press **Space** / tap **Mine**. Rocks are levels 1–10; green badges are ones you can mine. Success gives gold, XP and ore. A miss cracks the rock (easier next time) — and **may disturb an enemy**.
+- **Fight**: face an enemy and press **Space** / tap **Attack** to strike with your dagger. Enemies get tougher in deeper rock:
+  - 🟢 **Pebble Slime** (levels 1–3) · 🦇 **Cave Bat** (4–6, fast) · 💎 **Crystal Golem** (7–10, tough)
+  - They chase the nearest miner and hit when next to you. Defeating one drops gold for the team and XP for you.
+- **Health**: shown as ❤️ in the top bar. At 0 you're **knocked out** and wake up a few seconds later in the Upgrades room. Health slowly refills while you rest in the Upgrades room.
+- **Upgrades room** (all paid from the team stash):
+  - 🔥 **Forge** — 2 ore + 1 Coal → 1 bar (Stone needs no coal).
+  - ⚒️ **Anvil** — forge your next **pickaxe** or **dagger** from bars of its material (Wooden → Stone → Copper → … → Mythril). Daggers need one bar fewer.
+  - 🛒 **Upgrade Cart** — 🧪 Health Potion, 🥪 Miner's Lunch (full health + XP), 🍀 Lucky Charm, 🧨 Dynamite, 🪨 Sack of Coal.
+- Each player has their own level, health, pickaxe and dagger. The **📊 Stats** panel shows both players, the team stash, milestones and the log.
 
 ## Custom sprites
 You can add your own character, ore and station art as PNG sprite sheets — see [`sprites/README.md`](sprites/README.md). Start from `sprites/example-miner.png` and the labelled `sprites/character-template-guide.png`.

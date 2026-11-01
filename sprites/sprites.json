@@ -1,5 +1,4 @@
 {
-  "default": "bunny-miner",
   "characters": [
     {
       "id": "bunny-miner",
@@ -8,12 +7,31 @@
       "frameWidth": 56,
       "frameHeight": 64,
       "scale": 1.5,
-      "rows": { "down": 0, "left": 1, "right": 2, "up": 3 },
-      "idle": [0, 1],
-      "walk": [2, 3, 4, 5],
-      "mine": [6, 7],
+      "rows": {
+        "down": 0,
+        "left": 1,
+        "right": 2,
+        "up": 3
+      },
+      "idle": [
+        0,
+        1
+      ],
+      "walk": [
+        2,
+        3,
+        4,
+        5
+      ],
+      "mine": [
+        6,
+        7
+      ],
       "extrasRow": 4,
-      "wave": [0, 1],
+      "wave": [
+        0,
+        1
+      ],
       "hurt": 2,
       "sit": 3,
       "doze": 4,
