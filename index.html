@@ -71,20 +71,30 @@
   }
 
   /* ===== In-game: one full-screen layout, no page scrolling ===== */
-  .app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; padding: 6px;
+  .app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; padding: 6px; padding-top: calc(10px + env(safe-area-inset-top));
          padding-bottom: max(6px, env(safe-area-inset-bottom)); gap: 6px; max-width: 1400px; margin: 0 auto; }
   .topbar, .hudbar { display: flex; align-items: center; gap: 8px; background: var(--panel); border: 2px solid var(--line);
                      border-radius: 8px; padding: 5px 8px; flex-wrap: nowrap; min-width: 0; box-shadow: inset 0 0 0 2px #141c48; }
-  .topbar { font-size: .85rem; justify-content: space-between; }
-  .topbar button, .hudbar button { font-size: .75rem; padding: 4px 8px; white-space: nowrap; }
-  .code { letter-spacing: 3px; color: var(--gold); font-weight: bold; font-size: 1rem; }
+  .topbar { font-size: 1rem; justify-content: space-between; padding: 8px 10px; }
+  .topbar button { font-size: .9rem; padding: 6px 12px; white-space: nowrap; }
+  .hudbar button { font-size: .85rem; padding: 5px 10px; white-space: nowrap; }
+  .hudbar .bag-btn { background: linear-gradient(180deg, #ffe890, #f0b840); color: #2a1d05; border-color: #b68a22; font-weight: bold; font-size: .95rem; }
+  .code { letter-spacing: 3px; color: var(--gold); font-weight: bold; font-size: 1.25rem; }
   .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--bad); margin-right: 5px; }
   .dot.on { background: var(--good); }
   .conn { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
-  .hudbar { font-size: .85rem; }
+  .hudbar { font-size: 1rem; padding: 7px 10px; }
+  .me-chip .hs b { font-size: 1.1rem; } .topbar > div:first-child { white-space: nowrap; } .me-chip small { font-size: .75rem; color: var(--muted); font-weight: normal; }
+  .bag-grid { display: grid; gap: 6px; width: max-content; margin: 4px auto 10px; }
+  .bag-grid { grid-auto-rows: 54px; } .bag-grid .slot { width: 54px; }
+  .slot { min-width: 0; padding: 0; border-radius: 8px; background: #0e1438; border: 2px solid #3a4a9a;
+          box-shadow: inset 0 0 0 2px #141c48; font-size: 1.8rem; position: relative; line-height: 1; }
+  .slot.empty { background: #141a40; opacity: .7; }
+  .slot.sel { border-color: var(--gold); box-shadow: 0 0 0 2px var(--gold); }
+  .slot b { position: absolute; right: 4px; bottom: 3px; font-size: .8rem; color: #fff; text-shadow: 0 1px 0 #000, 0 0 3px #000; }
   .me-chip { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
   .me-chip b { color: var(--text); }
-  .xp { display: inline-block; width: 46px; height: 6px; background: #00000066; border-radius: 9px; overflow: hidden; vertical-align: middle; }
+  .xp { display: inline-block; width: 56px; height: 9px; background: #00000066; border-radius: 9px; overflow: hidden; vertical-align: middle; }
   .xp i { display: block; height: 100%; background: var(--gold); }
   .turnline { flex: 1; min-width: 0; text-align: center; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .turnline .you { color: var(--gold); }
@@ -201,8 +211,11 @@
     .pet-dock { align-self: start; margin-top: 38px; min-width: 0; }
   }
   @media (max-width: 520px) {
-    .topbar { font-size: .78rem; } .code { font-size: .9rem; letter-spacing: 2px; }
-    .hudbar { flex-wrap: wrap; row-gap: 3px; font-size: .78rem; }
+    .topbar { font-size: .92rem; } .code { font-size: 1.15rem; letter-spacing: 2px; }
+    .topbar button { font-size: .85rem; padding: 6px 10px; }
+    .topbar { gap: 6px; } .conn { font-size: .82rem; min-width: 0; flex: 1; text-align: center; }
+    .hudbar { flex-wrap: wrap; row-gap: 5px; font-size: .95rem; }
+    .me-chip { flex-wrap: wrap; row-gap: 3px; }
     .turnline { order: 3; flex-basis: 100%; }
     .me-chip { gap: 6px; }
   }
@@ -278,6 +291,7 @@
     <div class="me-chip" id="me-chip"></div>
     <div class="turnline" id="turn-line"></div>
     <div class="hud-btns">
+      <button id="bag-btn" class="bag-btn" title="Backpack (B)">🎒 Bag</button>
       <button id="view-btn"></button>
       <button id="panel-btn">📊 Stats</button>
     </div>
@@ -327,7 +341,7 @@
 // ================= Version & fresh assets =================
 // BUILD changes with every release. Asset URLs carry it, so phones can't keep showing stale images,
 // and on load we check whether the server has a newer build than the one running.
-const BUILD = "2026.11.01-1820";
+const BUILD = "2026.11.01-1840";
 const withV = url => /^(https?:|data:|blob:)/.test(url) ? url : url + (url.includes("?") ? "&" : "?") + "v=" + BUILD;
 async function checkForUpdate() {
   try {
@@ -371,19 +385,54 @@ const PICKAXES = [
 ];
 
 // ---- Upgrade cart: consumable upgrades bought with gold
+// ---- Backpack: a grid of slots, 3x3 to start; the cart sells bigger backpacks.
+const BAG_SIZES = [[3, 3], [4, 3], [4, 4], [5, 4], [5, 5]];          // [columns, rows]
+const BAG_PRICES = [60, 140, 260, 420];
+const bagDims = p => BAG_SIZES[Math.min(p.bagLv || 0, BAG_SIZES.length - 1)];
+const bagCap = p => bagDims(p)[0] * bagDims(p)[1];
+const ITEMS = {
+  potion:   { icon: "🧪", name: "Health Potion", stack: 5, desc: () => "Restores half your health",
+              use: p => { if (p.hp >= maxHp(p)) return null; p.hp = Math.min(maxHp(p), p.hp + Math.ceil(maxHp(p) / 2)); return "drank a Health Potion 🧪"; } },
+  lunch:    { icon: "🥪", name: "Miner's Lunch", stack: 3, desc: p => p.level < 10 ? "Full health + half a level of XP" : "Full health",
+              use: p => { p.hp = maxHp(p); if (p.level >= 10) return "ate a Miner's Lunch"; const xp = Math.ceil(xpForLevel(p.level) / 2); p.xp += xp; return `ate a Miner's Lunch (+${xp} XP)`; } },
+  charm:    { icon: "🍀", name: "Lucky Charm",   stack: 3, desc: () => "+15% success on your next 3 swings",
+              use: p => { if ((p.charm || 0) >= 9) return null; p.charm = (p.charm || 0) + 3; return "rubbed a Lucky Charm 🍀"; } },
+  dynamite: { icon: "🧨", name: "Dynamite",      stack: 3, desc: () => "Light it: your next swing can't miss",
+              use: p => { if ((p.dynamite || 0) >= 3) return null; p.dynamite = (p.dynamite || 0) + 1; return "lit a stick of Dynamite 🧨"; } },
+};
+function fitBag(p) { const cap = bagCap(p); if (!Array.isArray(p.inv)) p.inv = []; while (p.inv.length < cap) p.inv.push(null); }
+function bagRoom(p, id) {   // how many of an item still fit
+  fitBag(p); const st = ITEMS[id].stack;
+  return p.inv.reduce((n, sl) => n + (!sl ? st : sl.id === id ? st - sl.n : 0), 0);
+}
+function addItem(p, id, n) {   // returns how many went in
+  fitBag(p); const st = ITEMS[id].stack; let left = n;
+  for (const sl of p.inv) if (left && sl && sl.id === id && sl.n < st) { const k = Math.min(left, st - sl.n); sl.n += k; left -= k; }
+  for (let i = 0; i < p.inv.length && left; i++) if (!p.inv[i]) { const k = Math.min(left, st); p.inv[i] = { id, n: k }; left -= k; }
+  return n - left;
+}
+const MAX_DROPS = 40;
+function dropItem(room, x, y, id, n, by = -1) {
+  state.drops.push({ id: state.nextDropId++, room, x, y, item: id, n, by, t: Date.now() });
+  if (state.drops.length > MAX_DROPS) state.drops.shift();
+}
+
 const CART_ITEMS = {
-  charm:    { icon: "🍀", name: "Lucky Charm",   desc: () => "+15% success on your next 3 swings",
-              price: p => 25 + 12 * p.level, available: p => (p.charm || 0) < 6,
-              apply: p => { p.charm = (p.charm || 0) + 3; return "bought a Lucky Charm 🍀"; } },
-  dynamite: { icon: "🧨", name: "Dynamite",      desc: () => "Your next swing can't miss",
-              price: p => 40 + 22 * p.level, available: p => (p.dynamite || 0) < 3,
-              apply: p => { p.dynamite = (p.dynamite || 0) + 1; return "bought Dynamite 🧨"; } },
-  potion:   { icon: "🧪", name: "Health Potion", desc: () => "Restore half your health",
-              price: p => 12 + 4 * p.level, available: p => p.hp < maxHp(p),
-              apply: p => { p.hp = Math.min(maxHp(p), p.hp + Math.ceil(maxHp(p) / 2)); return "drank a Health Potion 🧪"; } },
-  lunch:    { icon: "🥪", name: "Miner's Lunch", desc: p => p.level < 10 ? "Full health + half a level of XP" : "Full health",
-              price: p => 20 + 10 * p.level, available: () => true,
-              apply: p => { p.hp = maxHp(p); if (p.level >= 10) return "ate a Miner's Lunch"; const xp = Math.ceil(xpForLevel(p.level) / 2); p.xp += xp; return `ate a Miner's Lunch (+${xp} XP)`; } },
+  bag:      { icon: "🎒", name: "Bigger Backpack", desc: p => { const nx = BAG_SIZES[(p.bagLv || 0) + 1]; return nx ? `Grow your backpack to ${nx[0]}×${nx[1]} slots` : "Your backpack is as big as it gets"; },
+              price: p => BAG_PRICES[p.bagLv || 0] || 0, available: p => (p.bagLv || 0) < BAG_SIZES.length - 1,
+              apply: p => { p.bagLv = (p.bagLv || 0) + 1; fitBag(p); const [c, r] = bagDims(p); return `upgraded to a ${c}×${r} backpack 🎒`; } },
+  potion:   { icon: "🧪", name: "Health Potion", desc: () => "Restores half your health · goes in your backpack",
+              price: p => 12 + 4 * p.level, available: p => bagRoom(p, "potion") > 0,
+              apply: p => { addItem(p, "potion", 1); return "bought a Health Potion 🧪"; } },
+  lunch:    { icon: "🥪", name: "Miner's Lunch", desc: p => (p.level < 10 ? "Full health + half a level of XP" : "Full health") + " · goes in your backpack",
+              price: p => 20 + 10 * p.level, available: p => bagRoom(p, "lunch") > 0,
+              apply: p => { addItem(p, "lunch", 1); return "bought a Miner's Lunch 🥪"; } },
+  charm:    { icon: "🍀", name: "Lucky Charm",   desc: () => "+15% success on 3 swings · goes in your backpack",
+              price: p => 25 + 12 * p.level, available: p => bagRoom(p, "charm") > 0,
+              apply: p => { addItem(p, "charm", 1); return "bought a Lucky Charm 🍀"; } },
+  dynamite: { icon: "🧨", name: "Dynamite",      desc: () => "Next swing can't miss · goes in your backpack",
+              price: p => 40 + 22 * p.level, available: p => bagRoom(p, "dynamite") > 0,
+              apply: p => { addItem(p, "dynamite", 1); return "bought Dynamite 🧨"; } },
   coal:     { icon: "🪨", name: "Sack of Coal",  desc: () => "3 Coal for the team — forge fuel",
               price: p => 15 + 2 * p.level, available: () => true,
               apply: p => { stash().bag.Coal = (stash().bag.Coal || 0) + 3; return "bought a Sack of Coal"; } },
@@ -531,14 +580,14 @@ const saveKey = code => "mwf-lobby-" + code;
 // ================= State =================
 function newPlayer(name, seat) {
   return { name, xp: 0, level: 1, pick: 0, dagger: 0, hp: 20, ko: 0, tp: 0, kills: 0, mined: 0, fails: 0, streak: 0, ores: {},
-           charm: 0, dynamite: 0, room: "world", x: SPAWNS[seat].x, y: SPAWNS[seat].y, fx: SPAWNS[seat].x, fy: SPAWNS[seat].y, dir: "down" };
+           charm: 0, dynamite: 0, bagLv: 0, inv: Array(9).fill(null), room: "world", x: SPAWNS[seat].x, y: SPAWNS[seat].y, fx: SPAWNS[seat].x, fy: SPAWNS[seat].y, dir: "down" };
 }
 function newGame() {
   const s = {
     players: [newPlayer("Player 1", 0), newPlayer("Player 2", 1)],
     shared: { gold: 0, bag: {}, bars: {} },
     team: { mined: 0, fails: 0, goldEarned: 0, ores: {}, kills: 0, maxDepth: 1 },
-    log: [], mines: {},
+    log: [], mines: {}, drops: [], nextDropId: 1,
   };
   s.mines[1] = newMineLevel(1, s.players);
   return s;
@@ -554,7 +603,7 @@ function migrate(s) {   // bring older saves up to date
     if (p.room === "mine") p.room = "mine:1";
     if (!validRoom(p.room)) Object.assign(p, { room: "world", x: SPAWNS[i].x, y: SPAWNS[i].y });
     if (p.x == null) Object.assign(p, { x: SPAWNS[i].x, y: SPAWNS[i].y, dir: "down" });
-    p.charm = p.charm || 0; p.dynamite = p.dynamite || 0;
+    p.charm = p.charm || 0; p.dynamite = p.dynamite || 0; p.bagLv = p.bagLv || 0; fitBag(p);
     p.dagger = p.dagger || 0; p.kills = p.kills || 0; p.tp = p.tp || 0;
     if (p.hp == null) p.hp = maxHp(p);
   });
@@ -567,6 +616,7 @@ function migrate(s) {   // bring older saves up to date
       delete p.gold; delete p.bag; delete p.bars;
     }
   }
+  s.drops = Array.isArray(s.drops) ? s.drops : []; s.nextDropId = s.nextDropId || 1;
   s.team.kills = s.team.kills || 0; s.team.maxDepth = s.team.maxDepth || 1;
   delete s.current; delete s.actionsLeft;
   for (const L of Object.values(s.mines)) { L.enemies = L.enemies || []; L.tunnel = L.tunnel || null; fillRocks(L, s.players); }
@@ -671,6 +721,38 @@ function applyAction(seat, action) {
   }
   if (DIRS[action.dir]) p.dir = action.dir;
 
+  // ---- backpack: use, drop, pick up (anywhere)
+  if (action.type === "useItem" || action.type === "drop") {
+    fitBag(p);
+    const sl = p.inv[action.slot];
+    if (!sl || !ITEMS[sl.id]) return null;
+    const it = ITEMS[sl.id];
+    if (action.type === "useItem") {
+      const msg = it.use(p);
+      if (!msg) return { text: `You can't use ${it.name} right now.`, ok: false, seat, private: true };
+      if (--sl.n <= 0) p.inv[action.slot] = null;
+      if (levelUp(p)) p.hp = maxHp(p);
+      return { text: `${p.name} ${msg}.`, ok: true, seat, quiet: true,
+               fx: { room: p.room, x: p.x, y: p.y, color: "#6ae07a", label: it.icon }, noSwing: true };
+    }
+    const n = Math.min(sl.n, Math.max(1, Math.floor(action.n) || sl.n));
+    sl.n -= n; if (sl.n <= 0) p.inv[action.slot] = null;
+    const [ddx, ddy] = DIRS[p.dir || "down"], tx = p.x + ddx, ty = p.y + ddy;   // set it down just in front of you
+    const clear = walkable(state, p.room, tx, ty) && !(isMine(p.room) && (rockAt(L, tx, ty)));
+    dropItem(p.room, clear ? p.fx + ddx * 0.7 : p.fx, clear ? p.fy + ddy * 0.7 : p.fy + 0.15, sl.id, n, seat);
+    return { text: `${p.name} dropped ${n > 1 ? n + " × " : "a "}${it.name}.`, ok: true, seat, quiet: true, notify: true };
+  }
+  if (action.type === "pickup") {
+    const d = state.drops.find(x => x.id === action.dropId);
+    if (!d || d.room !== p.room || Math.hypot(d.x - p.fx, d.y - p.fy) > 1.1) return null;
+    const got = addItem(p, d.item, d.n);
+    if (!got) return { text: "Your backpack is full!", ok: false, seat, private: true };
+    d.n -= got; if (d.n <= 0) state.drops = state.drops.filter(x => x !== d);
+    const it = ITEMS[d.item];
+    return { text: `${p.name} picked up ${got > 1 ? got + " × " : "a "}${it.name}.`, ok: true, seat, quiet: true,
+             fx: { room: p.room, x: p.x, y: p.y, color: "#ffe070", label: `+${got} ${it.icon}` }, noSwing: true, notify: true };
+  }
+
   if (action.type === "mine" || action.type === "attack") {
     if (!isMine(p.room) || (p.busy || 0) > now) return null;
     p.busy = now + 420;
@@ -687,6 +769,8 @@ function applyAction(seat, action) {
       L.enemies = L.enemies.filter(x => x !== e);
       sh.gold += e.gold; p.xp += e.xp; p.kills++; state.team.kills++; state.team.goldEarned += e.gold;
       let text = `${p.name} defeated a ${name}! +${e.gold} gold, +${e.xp} XP`;
+      const loot = Math.random();   // now and then a critter leaves something behind
+      if (loot < 0.12) { dropItem(p.room, e.x, e.y, loot < 0.03 ? "charm" : "potion", 1); text += " It dropped something!"; }
       if (levelUp(p)) { text += ` — reached Miner level ${p.level}!`; p.hp = maxHp(p); }
       addLog(text, true);
       return { text, ok: true, seat, weapon: "dagger", fx: { room: p.room, x: e.x, y: e.y, color: "#ffffff", label: `+${e.gold} 🪙` } };
@@ -1891,8 +1975,10 @@ function onResult(r) {
   }
   if (r.hitEnemy) enemyFlash[r.hitEnemy] = tnow;
   if (r.weapon) swingWeapon[r.seat] = r.weapon; else if (r.fx && isMine(r.fx.room)) swingWeapon[r.seat] = "pick";
+  if (r.private) { if (r.seat === net.seat) showResult(r, 2500); return; }
+  if (r.notify) showResult({ ...r, neutral: true }, 3000);
   if (r.quiet) {
-    if (r.fx) { swing[r.seat] = tnow; if (r.fx.room === myRoom()) floaters.push({ x: (r.fx.x + .5) * TS, y: r.fx.y * TS, t0: tnow + 200, text: r.fx.label, color: r.fx.color }); }
+    if (r.fx) { if (!r.noSwing) swing[r.seat] = tnow; if (r.fx.room === myRoom()) floaters.push({ x: (r.fx.x + .5) * TS, y: r.fx.y * TS, t0: tnow + 200, text: r.fx.label, color: r.fx.color }); }
     return;
   }
   showResult(r);
@@ -2066,6 +2152,41 @@ function drawPetDock(now) {
   petCtx.drawImage(img, x, feet - h + 3, w, h);
 }
 
+// Items lying on the ground: a little bobbing icon with a glow so they're easy to spot.
+function drawDrop(d, now) {
+  const it = ITEMS[d.item]; if (!it) return;
+  const cx = (d.x + .5) * TS, base = (d.y + .75) * TS, bob = Math.sin(now / 300 + d.id) * 3;
+  ctx.fillStyle = "#00000044"; ctx.beginPath(); ctx.ellipse(cx, base, TS * .22, 4, 0, 0, Math.PI * 2); ctx.fill();
+  const gl = ctx.createRadialGradient(cx, base - 14 + bob, 0, cx, base - 14 + bob, TS * .42);
+  gl.addColorStop(0, "rgba(255,240,160,.55)"); gl.addColorStop(1, "rgba(255,240,160,0)");
+  ctx.fillStyle = gl; ctx.fillRect(cx - TS / 2, base - 14 + bob - TS / 2, TS, TS);
+  ctx.font = `${Math.round(TS * .5)}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText(it.icon, cx, base - 14 + bob);
+  if (d.n > 1) drawLabel("×" + d.n, cx + TS * .3, base - 2 + bob, "#ffffff", 9);
+}
+// Walk over an item to pick it up (the host checks it's really there and you have room).
+const pickupTried = {}, walkedOff = {};
+let bagFullNote = 0;
+function checkPickups(now) {
+  if (!inGame() || !net.connected || !state.drops) return;
+  const me = state.players[net.seat];
+  if (me.ko) return;
+  for (const d of state.drops) {
+    const dist = d.room === me.room ? Math.hypot(d.x - me.fx, d.y - me.fy) : 99;
+    if (dist > 1.2) walkedOff[d.id] = true;
+    if (dist > 0.7) continue;
+    if (d.by === net.seat && !walkedOff[d.id]) continue;          // your own drop: step away first, then you can grab it back
+    if ((pickupTried[d.id] || 0) > now) continue;
+    pickupTried[d.id] = now + 900;
+    if (ITEMS[d.item] && bagRoom(me, d.item) <= 0) {
+      if (now > bagFullNote) { bagFullNote = now + 3000; floatText("Backpack full!", "#e0675a"); }
+      continue;
+    }
+    sendAction({ type: "pickup", dropId: d.id });
+  }
+}
+
 function drawEnemy(e, now) {
   const d = enemyDisp[e.id] || (enemyDisp[e.id] = { x: e.x, y: e.y });
   const f = Math.floor(now / (e.type === "bat" ? 160 : 380)) % 2;
@@ -2236,6 +2357,9 @@ function frame(now) {
       STATIONS.filter(st => inRoom(st.x, st.y, { rx: org.x / W, ry: org.y / H }))
         .forEach(st => things.push({ y: st.y, draw: () => drawStation(st, now) }));
     }
+    const viewRoom = { rx: org.x / W, ry: org.y / H };
+    for (const d of state.drops || [])
+      if (d.room === room && (isMine(room) || inRoom(Math.round(d.x), Math.round(d.y), viewRoom))) things.push({ y: d.y - 0.3, draw: () => drawDrop(d, now) });
     updatePets(dt);
     [0, 1].forEach(i => { if (petPos[i] && (i === net.seat || (net.connected && sameView(state.players[i], meP)))) things.push({ y: petPos[i].y - 0.02, draw: () => drawPet(i, now) }); });
     [0, 1].forEach(i => { if (i === net.seat || sameView(state.players[i], meP)) things.push({ y: disp[i].y + 0.01, draw: () => drawPlayer(i, now) }); });
@@ -2261,7 +2385,8 @@ function frame(now) {
     vctx.drawImage(world, view.x * K, view.y * K, view.w * K, view.h * K, 0, 0, canvas.width, canvas.height);
     updateActButton();
     drawPetDock(now);
-    if (menuOpen) {   // walked (or got moved) away from the station → close its menu
+    checkPickups(now);
+    if (menuOpen && menuOpen !== "bag") {   // walked (or got moved) away from the station → close its menu
       const st = STATIONS.find(x => x.id === menuOpen), me = state.players[net.seat];
       if (me.room !== "world" || !adjacent(me, st)) closeMenu();
     }
@@ -2365,7 +2490,8 @@ let actReady = 0, actQueued = false, actHeld = false;
 
 // ================= Station menus =================
 let menuOpen = null;
-function openMenu(id) { menuOpen = id; held.length = 0; renderMenu(); }
+function openMenu(id) { menuOpen = id; held.length = 0; lastMenuHtml = ""; renderMenu(); }
+function toggleBag() { if (menuOpen === "bag") closeMenu(); else { bagSel = -1; openMenu("bag"); } }
 function closeMenu() { menuOpen = null; document.getElementById("menu").classList.add("hidden"); }
 
 function stationAction(extra) {
@@ -2382,9 +2508,38 @@ function invLine(p) {
   return `<div class="menu-inv"><b>Team stash</b><br>🎒 Ore: ${ores}<br>🧱 Bars: ${bars}<br>🪙 Gold: ${sh.gold}</div>`;
 }
 
+let bagSel = -1, lastMenuHtml = "";
+function setMenuBody(html) {   // only touch the DOM when something changed, so taps never land on a rebuilt button
+  if (html === lastMenuHtml) return;
+  lastMenuHtml = html; document.getElementById("menu-body").innerHTML = html;
+}
+function renderBag(el) {
+  const me = state.players[net.seat]; fitBag(me);
+  const [cols, rows] = bagDims(me);
+  el.classList.remove("hidden");
+  document.getElementById("menu-title").textContent = `🎒 Backpack · ${cols}×${rows}`;
+  const note = document.getElementById("menu-note");
+  note.className = "menu-note turn";
+  note.textContent = "Tap an item to use or drop it. Anything you drop can be picked up by walking over it.";
+  if (bagSel >= 0 && !me.inv[bagSel]) bagSel = -1;
+  let html = `<div class="bag-grid" style="grid-template-columns:repeat(${cols},54px)">` + me.inv.map((sl, i) =>
+    `<button class="slot${i === bagSel ? " sel" : ""}${sl ? "" : " empty"}" data-slot="${i}">${sl ? ITEMS[sl.id].icon + (sl.n > 1 ? `<b>${sl.n}</b>` : "") : ""}</button>`).join("") + `</div>`;
+  const sl = me.inv[bagSel];
+  if (sl) {
+    const it = ITEMS[sl.id], dis = net.connected ? "" : "disabled";
+    html += `<div class="mrow"><div class="ic">${it.icon}</div><div class="txt"><b>${it.name} ×${sl.n}</b><small>${it.desc(me)}</small></div>
+      <div class="btns"><button class="btn-gold" data-use="${bagSel}" ${dis}>Use</button><button data-drop="${bagSel}" data-n="1" ${dis}>Drop 1</button>${sl.n > 1 ? `<button data-drop="${bagSel}" data-n="${sl.n}" ${dis}>Drop all</button>` : ""}</div></div>`;
+  } else html += `<div class="mrow dim"><div class="ic">👆</div><div class="txt"><b>${me.inv.some(Boolean) ? "Pick an item" : "Your backpack is empty"}</b><small>${me.inv.some(Boolean) ? "Tap a slot to see what it does." : "Buy supplies at the Upgrade Cart, or grab what enemies and teammates drop."}</small></div></div>`;
+  const fx = [me.charm ? `🍀 Lucky for ${me.charm} swing${me.charm > 1 ? "s" : ""}` : "", me.dynamite ? `🧨 ${me.dynamite} dynamite lit` : ""].filter(Boolean).join(" · ");
+  html += `<div class="menu-inv"><b>Gear</b> ⛏️ ${PICKAXES[me.pick].name} Pickaxe · 🗡️ ${DAGGER_NAMES[me.dagger || 0]} Dagger${fx ? `<br><b>Active</b> ${fx}` : ""}</div>` + invLine(me);
+  if (!net.connected) html += `<div class="menu-inv">Items can be used once your teammate joins.</div>`;
+  setMenuBody(html);
+}
+
 function renderMenu() {
   const el = document.getElementById("menu");
   if (!menuOpen || !state) return el.classList.add("hidden");
+  if (menuOpen === "bag") return renderBag(el);
   const me = state.players[net.seat];
   if (me.room !== "world") return closeMenu();
   el.classList.remove("hidden");
@@ -2403,7 +2558,7 @@ function renderMenu() {
       const avail = it.available(me), price = it.price(me), afford = sh.gold >= price;
       return `<div class="mrow ${avail ? "" : "dim"}"><div class="ic">${it.icon}</div>
         <div class="txt"><b>${it.name}</b><small>${it.desc(me)}</small></div>
-        <div class="btns"><button class="btn-gold" data-buy="${id}" ${dis(avail && afford)}>${avail ? `${price} 🪙` : "Maxed"}</button></div></div>`;
+        <div class="btns"><button class="btn-gold" data-buy="${id}" ${dis(avail && afford)}>${avail ? `${price} 🪙` : id === "bag" ? "Maxed" : "Bag full"}</button></div></div>`;
     }).join("");
   }
 
@@ -2435,13 +2590,16 @@ function renderMenu() {
     html = gear("pickaxe", "⛏️", me.pick, `Power ${PICKAXES[me.pick].power} · mines rocks up to level ${maxRock(me)}`)
          + gear("dagger", "🗡️", me.dagger || 0, `${daggerDamage(me)} damage per hit`);
   }
-  document.getElementById("menu-body").innerHTML = html + invLine(me);
+  setMenuBody(html + invLine(me));
 }
 
 document.getElementById("menu").addEventListener("click", e => {
   const b = e.target.closest("button");
   if (!b || b.disabled) return;
   if (b.id === "menu-close") return closeMenu();
+  if (b.dataset.slot !== undefined) { bagSel = +b.dataset.slot === bagSel ? -1 : +b.dataset.slot; return renderMenu(); }
+  if (b.dataset.use !== undefined) return sendAction({ type: "useItem", slot: +b.dataset.use });
+  if (b.dataset.drop !== undefined) return sendAction({ type: "drop", slot: +b.dataset.drop, n: +b.dataset.n });
   if (b.dataset.buy) stationAction({ type: "buy", item: b.dataset.buy });
   else if (b.dataset.smelt) stationAction({ type: "smelt", ore: b.dataset.smelt, count: +b.dataset.n });
   else if (b.dataset.craft !== undefined) stationAction({ type: "craft", item: b.dataset.craft || "pickaxe" });
@@ -2456,7 +2614,8 @@ function updateActButton() {
 
 document.addEventListener("keydown", e => {
   if (!inGame() || e.target.tagName === "INPUT") return;
-  if (menuOpen) { if (["Escape", "KeyQ", "Space"].includes(e.code)) { e.preventDefault(); closeMenu(); } return; }
+  if (menuOpen) { if (["Escape", "KeyQ", "Space", ...(menuOpen === "bag" ? ["KeyI", "KeyB"] : [])].includes(e.code)) { e.preventDefault(); closeMenu(); } return; }
+  if (e.code === "KeyI" || e.code === "KeyB") { e.preventDefault(); return toggleBag(); }
   if (KEYMAP[e.code]) { e.preventDefault(); pressDir(KEYMAP[e.code]); }
   else if (e.code === "Space" || e.code === "Enter" || e.code === "KeyE") { e.preventDefault(); if (!e.repeat) { actHeld = true; act(); } }
 
@@ -2702,7 +2861,7 @@ function setConnected(on) {
   net.connected = on;
   document.getElementById("conn-dot").classList.toggle("on", on);
   document.getElementById("conn-label").textContent = on
-    ? "Both connected"
+    ? (innerWidth < 520 ? "Connected" : "Both connected")
     : net.isHost ? "Waiting for friend…" : "Disconnected";
   if (!on && net.isHost) showResult({ text: `Share code ${net.code} with your friend. You can explore while you wait.`, ok: true, neutral: true }, 8000);
   render();
@@ -2777,8 +2936,8 @@ function renderHud() {
   const pct = me.level >= 10 ? 100 : Math.min(100, (me.xp / xpForLevel(me.level)) * 100);
   const hp = Math.round(me.hp / maxHp(me) * 100);
   document.getElementById("me-chip").innerHTML =
-    `<span>❤️ <b>${me.hp}</b> <span class="xp"><i style="width:${hp}%;background:#6ae07a"></i></span></span>` +
-    `<span>Lvl <b>${me.level}</b> <span class="xp"><i style="width:${pct}%"></i></span></span>` +
+    `<span class="hs">❤️ <b>${me.hp}<small>/${maxHp(me)}</small></b> <span class="xp hp"><i style="width:${hp}%;background:${hp > 50 ? "#6ae07a" : hp > 25 ? "#f2c14e" : "#e8483e"}"></i></span></span>` +
+    `<span class="hs">⭐ <b>Lv ${me.level}</b> <span class="xp"><i style="width:${pct}%"></i></span></span>` +
     `<span>🪙 <b>${sh.gold}</b></span><span>⛏️ <b>${PICKAXES[me.pick].name}</b></span><span>🗡️ <b>${DAGGER_NAMES[me.dagger || 0]}</b></span>` +
     (buffs(me) ? `<span>${buffs(me)}</span>` : "");
   const el = document.getElementById("turn-line");
@@ -2800,6 +2959,7 @@ function escapeHtml(s) {
 
 // ================= Buttons =================
 
+document.getElementById("bag-btn").onclick = () => toggleBag();
 document.getElementById("view-btn").onclick = () => setViewMode(viewMode === "follow" ? "full" : "follow");
 setViewMode(viewMode);
 document.getElementById("panel-btn").onclick = () => document.getElementById("side").classList.add("open");

@@ -29,7 +29,9 @@ Players connect directly browser-to-browser (via [PeerJS](https://peerjs.com)), 
 ### Controls & gear
 - Walk with WASD / arrows (diagonals too) or the on-screen joystick on phones. Hold Space / the action button to keep swinging.
 - **Health** ❤️: at 0 you're knocked out and wake at home base.
-- **Shop**: Forge (2 ore + 1 Coal → 1 bar), Anvil (forge your next **pickaxe** or **dagger** from bars), Cart (🧪 Potion, 🥪 Lunch, 🍀 Charm, 🧨 Dynamite, 🪨 Coal).
+- **Shop**: Forge (2 ore + 1 Coal → 1 bar), Anvil (forge your next **pickaxe** or **dagger** from bars), Cart (🧪 Potion, 🥪 Lunch, 🍀 Charm, 🧨 Dynamite, 🪨 Coal, 🎒 Bigger Backpack).
+- **Backpack** 🎒: tap **Bag** on the health bar (or press **B** / **I**). It starts at 3×3 slots and grows up to 5×5 with Bigger Backpack upgrades from the cart. Potions, lunches, charms and dynamite go here; tap an item to **Use** or **Drop** it.
+- **Dropping & picking up**: dropped items appear on the ground for anyone to grab by walking over them (step away first to re-grab your own). Defeated enemies sometimes drop a potion or charm.
 
 ## Custom sprites
 You can add your own character, ore and station art as PNG sprite sheets — see [`sprites/README.md`](sprites/README.md). Start from `sprites/example-miner.png` and the labelled `sprites/character-template-guide.png`.
