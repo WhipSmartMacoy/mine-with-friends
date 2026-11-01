@@ -381,7 +381,7 @@ const ENEMY_TYPES = {
   bat:   { name: "Cave Bat",      hp: 12, dmg: 3, step: 520,  atk: 1100, gold: 14, xp: 10 },
   golem: { name: "Crystal Golem", hp: 26, dmg: 6, step: 1250, atk: 1700, gold: 30, xp: 22 },
 };
-const ENEMY_SPAWN_CHANCE = 0.4, MAX_ENEMIES = 6, KO_MS = 4000;
+const ENEMY_SPAWN_CHANCE = 0.4, MAX_ENEMIES = 4, KO_MS = 4000;
 const AMBIENT_SPAWN_CHANCE = 0.035;   // rolled once a second while someone is in the mine (~1 every 30 s)
 function makeEnemy(s, level, x, y) {
   const type = level <= 3 ? "slime" : level <= 6 ? "bat" : "golem", T = ENEMY_TYPES[type];
@@ -403,21 +403,21 @@ const MILESTONES = [
 ];
 
 // ---- Rooms (tiles). Both rooms share one 20x12 grid.
-const T = 16, S = 3, TS = T * S, W = 20, H = 20, ROCK_COUNT = 20;   // rooms are 20x20 tiles = 1280x1280 px
+const T = 16, S = 3, TS = T * S, W = 10, H = 10, ROCK_COUNT = 9;    // rooms are 10x10 tiles
 const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 const ROOMS = {
-  mine:     { inside: (x, y) => x >= 1 && x <= W - 2 && y >= 2 && y <= H - 2, door: { x: 7, y: 1, to: "upgrades" } },
-  upgrades: { inside: (x, y) => x >= 3 && x <= 16 && y >= 3 && y <= H - 3, door: { x: 10, y: H - 2, to: "mine" } },
+  mine:     { inside: (x, y) => x >= 1 && x <= W - 2 && y >= 2 && y <= H - 2, door: { x: 4, y: 1, to: "upgrades" } },
+  upgrades: { inside: (x, y) => x >= 1 && x <= W - 2 && y >= 3 && y <= H - 3, door: { x: 5, y: H - 2, to: "mine" } },
 };
-const ARRIVE = { upgrades: { x: 10, y: H - 3, dir: "up" }, mine: { x: 7, y: 2, dir: "down" } };
+const ARRIVE = { upgrades: { x: 5, y: H - 3, dir: "up" }, mine: { x: 4, y: 2, dir: "down" } };
 // Interactive stations in the Upgrades room
 const STATIONS = [
-  { id: "cart",  x: 3,  y: 3, name: "Upgrade Cart", verb: "browse upgrades" },
-  { id: "forge", x: 10, y: 3, name: "Forge",        verb: "smelt bars" },
-  { id: "anvil", x: 16, y: 3, name: "Anvil",        verb: "craft a pickaxe" },
+  { id: "cart",  x: 1, y: 3, name: "Upgrade Cart", verb: "browse upgrades" },
+  { id: "forge", x: 5, y: 3, name: "Forge",        verb: "smelt bars" },
+  { id: "anvil", x: 8, y: 3, name: "Anvil",        verb: "craft gear" },
 ];
 const ROOM_NAMES = { mine: "mine", upgrades: "Upgrades room" };
-const SPAWNS = [{ x: 4, y: 6 }, { x: 15, y: 6 }];
+const SPAWNS = [{ x: 3, y: 5 }, { x: 6, y: 5 }];
 
 const PEER_PREFIX = "mine-with-friends-";
 const PREFS_KEY = "mwf-prefs";
@@ -461,6 +461,15 @@ function migrate(s) {   // bring older saves up to date
   s.team.kills = s.team.kills || 0;
   delete s.current; delete s.actionsLeft;
   if (!s.rocks) { s.rocks = []; s.nextRockId = 1; }
+  // rooms changed size over time: drop anything outside them and move stranded miners to safety
+  s.rocks = s.rocks.filter(r => ROOMS.mine.inside(r.x, r.y));
+  s.enemies = (s.enemies || []).filter(e => ROOMS.mine.inside(e.x, e.y));
+  s.players.forEach((p, i) => {
+    if (!ROOMS[p.room].inside(p.x, p.y) || (p.room === "mine" && s.rocks.some(r => r.x === p.x && r.y === p.y))) {
+      const at = p.room === "mine" ? SPAWNS[i] : ARRIVE.upgrades;
+      Object.assign(p, { x: at.x, y: at.y, fx: at.x, fy: at.y });
+    }
+  });
   fillRocks(s);
   return s;
 }
@@ -685,7 +694,7 @@ function hostTick() {
       for (let tries = 0; tries < 60; tries++) {
         const x = 1 + Math.floor(Math.random() * (W - 2)), y = 2 + Math.floor(Math.random() * (H - 3));
         if (!walkable(state, "mine", x, y) || enemyAt(state, x, y)) continue;
-        if (state.players.some(p => p.room === "mine" && Math.abs(p.x - x) + Math.abs(p.y - y) < 5)) continue;
+        if (state.players.some(p => p.room === "mine" && Math.abs(p.x - x) + Math.abs(p.y - y) < 3)) continue;
         const e = makeEnemy(state, level, x, y); state.enemies.push(e);
         addLog(`A ${ENEMY_TYPES[e.type].name} crept out of the shadows!`, false); simDirty = true;
         break;
@@ -1443,7 +1452,7 @@ ctx.imageSmoothingEnabled = false;
 const vctx = canvas.getContext("2d");              // …then the visible part is copied to the screen
 const isTouch = matchMedia("(hover: none)").matches;
 // "follow" = zoomed camera that tracks your miner (default on small screens); "full" = whole room.
-let viewMode = (readJSON(PREFS_KEY) || {}).view || (window.innerWidth < 780 ? "follow" : "full");
+let viewMode = (readJSON(PREFS_KEY) || {}).viewV2 || "full";   // rooms fit on any screen now
 let view = { x: 0, y: 0, w: W * TS, h: H * TS };
 let ui = 1;   // text scale, so labels stay readable however small the game is shown
 
@@ -1452,10 +1461,10 @@ function updateView() {
   const sw = stage.clientWidth || 1, sh = stage.clientHeight || 1, aspect = sw / sh;
   if (viewMode === "follow") {
     // fill the available space: fewer tiles across in portrait, fewer down in landscape
-    let tw = aspect < 1 ? 8 : 12;
+    let tw = Math.min(W, aspect < 1 ? 7 : 9);
     let th = Math.round(tw / aspect);
     if (th > H) { th = H; tw = Math.min(W, Math.round(th * aspect)); }
-    th = Math.max(6, th);
+    th = Math.max(Math.min(H, 6), th); tw = Math.min(tw, W);
     const vw = tw * TS, vh = th * TS, d = disp[net.seat];
     const cx = (d.x + .5) * TS, cy = (d.y + .5) * TS;
     view = { w: vw, h: vh,
@@ -1471,11 +1480,11 @@ function updateView() {
 }
 function setViewMode(m) {
   viewMode = m;
-  writeJSON(PREFS_KEY, { ...(readJSON(PREFS_KEY) || {}), view: m });
+  writeJSON(PREFS_KEY, { ...(readJSON(PREFS_KEY) || {}), viewV2: m });
   document.getElementById("view-btn").textContent = m === "follow" ? "🗺️ Whole room" : "🔍 Zoom";
 }
 
-const TORCHES = [4, 12, 15];
+const TORCHES = [2, 6, 8];
 
 function makeBg(drawTile, lighting) {
   const c = mkCanvas(W * TS * K, H * TS * K), g = c.getContext("2d");
@@ -1544,7 +1553,7 @@ const backgrounds = {
       rg.addColorStop(0, "rgba(255,200,120,0.22)"); rg.addColorStop(1, "rgba(255,200,120,0)");
       g.fillStyle = rg; g.fillRect(fx, fy, fw, fh);
     }
-    const vg = g.createRadialGradient(W * TS / 2, H * TS / 2, 4 * TS, W * TS / 2, H * TS / 2, 14 * TS);
+    const vg = g.createRadialGradient(W * TS / 2, H * TS / 2, 2 * TS, W * TS / 2, H * TS / 2, 7.5 * TS);
     vg.addColorStop(0, "rgba(40,20,60,0)"); vg.addColorStop(1, "rgba(40,20,60,0.32)");   // soft edge shade
     g.fillStyle = vg; g.fillRect(fx, fy, fw, fh);
   }),
@@ -1562,7 +1571,7 @@ const backgrounds = {
 
         }
         if (y === 3) px(X, Y, 32, 4, "rgba(60,20,40,0.3)");
-      } else if (y >= 0 && y <= 2 && x >= 2 && x <= 17) {  // plaster wall with timber beams & shelf
+      } else if (y >= 0 && y <= 2) {                        // plaster wall with timber beams & shelf
         px(X, Y, 32, 32, y === 2 ? "#d8bc8e" : "#ecd6aa");
 
         if (x % 3 === 2) { px(X + 12 * h, Y, 6, 32, "#8a5a34"); px(X + 12 * h, Y, 2, 32, "#b07a44"); px(X + 17 * h, Y, 1, 32, "#5a3420"); }
@@ -1577,9 +1586,9 @@ const backgrounds = {
           }
         }
         if (y === 2) { px(X, Y + 26 * h, 32, 6, "#8a5a34"); px(X, Y + 26 * h, 32, 1, "#c08a50"); }
-      } else if ((x === 2 || x === 17) && y >= 3 && y <= H - 2) {
-        px(X, Y, 32, 32, "#8a5a34"); px(x === 2 ? X + 26 * h : X, Y, 6, 32, "#5a3420"); px(x === 2 ? X + 26 * h : X + 5 * h, Y, 1, 32, "#b07a44");
-      } else if (y === H - 2 && x >= 2 && x <= 17) {
+      } else if ((x === 0 || x === W - 1) && y >= 3 && y <= H - 2) {
+        px(X, Y, 32, 32, "#8a5a34"); px(x === 0 ? X + 26 * h : X, Y, 6, 32, "#5a3420"); px(x === 0 ? X + 26 * h : X + 5 * h, Y, 1, 32, "#b07a44");
+      } else if (y === H - 2) {
         px(X, Y, 32, 32, "#8a5a34"); px(X, Y, 32, 3, "#5a3420");
       } else {
         px(X, Y, 32, 32, "#2e2236");
@@ -1591,9 +1600,9 @@ const backgrounds = {
     g.font = `bold ${8 * h}px "Trebuchet MS", sans-serif`; g.textAlign = "center"; g.textBaseline = "middle";
     g.fillStyle = "#fff0b0"; g.fillText("▼ MINE", DX + 16 * h, DY + 20 * h);
   }, g => {
-    const rg = g.createRadialGradient(10 * TS, 4 * TS, TS, 10 * TS, H / 2 * TS, 11 * TS);
+    const rg = g.createRadialGradient(W / 2 * TS, 4 * TS, TS, W / 2 * TS, H / 2 * TS, 6 * TS);
     rg.addColorStop(0, "rgba(255,220,150,0.18)"); rg.addColorStop(1, "rgba(60,20,40,0.28)");
-    g.fillStyle = rg; g.fillRect(3 * TS, 3 * TS, 14 * TS, (H - 5) * TS);
+    g.fillStyle = rg; g.fillRect(TS, 3 * TS, (W - 2) * TS, (H - 5) * TS);
   }),
 };
 
@@ -1947,7 +1956,7 @@ function changeRoom(to) {
   particles = []; floaters = [];
   sendMove(); render();
   closeMenu();
-  if (to === "upgrades") floaters.push({ x: 10.5 * TS, y: 2.2 * TS, t0: performance.now(), text: "Upgrades room", color: "#ffe08a" });
+  if (to === "upgrades") floaters.push({ x: W / 2 * TS, y: 2.2 * TS, t0: performance.now(), text: "Upgrades room", color: "#ffe08a" });
 }
 
 // Free movement: positions are in tile units (fx, fy = the tile centre you're nearest when whole).
