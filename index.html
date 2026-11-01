@@ -628,7 +628,7 @@ function applyAction(seat, action) {
   const p = state.players[seat], sh = stash(), now = Date.now();
   if (p.ko) return null;
   const L = levelOf(p.room);
-  if (action.x != null && action.room === p.room && walkable(state, p.room, action.x, action.y) && !enemyAt(L, action.x, action.y)) {
+  if (action.x != null && action.room === p.room && walkable(state, p.room, action.x, action.y)) {
     p.x = action.x; p.y = action.y; if (action.fx != null) { p.fx = action.fx; p.fy = action.fy; }
   }
   if (DIRS[action.dir]) p.dir = action.dir;
@@ -640,7 +640,7 @@ function applyAction(seat, action) {
 
   if (action.type === "attack") {
     const e = L.enemies.find(x => x.id === action.enemyId);
-    if (!e || !adjacent(p, e)) return null;
+    if (!e || Math.abs(p.x - e.x) + Math.abs(p.y - e.y) > 1) return null;
     const crit = Math.random() < 0.12;
     const dmg = (daggerDamage(p) + Math.floor(Math.random() * 2)) * (crit ? 2 : 1);
     e.hp -= dmg;
@@ -789,7 +789,7 @@ function hostTick() {
     for (const e of L.enemies) {
       const T = ENEMY_TYPES[e.type];
       const tgt = targets.reduce((a, b) => Math.abs(a.x - e.x) + Math.abs(a.y - e.y) <= Math.abs(b.x - e.x) + Math.abs(b.y - e.y) ? a : b);
-      if (adjacent(e, tgt)) {
+      if (Math.abs(e.x - tgt.x) + Math.abs(e.y - tgt.y) <= 1) {
         e.dir = tgt.x > e.x ? "right" : tgt.x < e.x ? "left" : tgt.y > e.y ? "down" : "up";
         if (now >= e.nextAtk) {
           e.nextAtk = now + T.atk; e.attackAt = now;
@@ -1845,7 +1845,7 @@ function facing() {
   const x = me.x + dx, y = me.y + dy;
   if (isMine(me.room)) {
     const L = levelOf(me.room);
-    const e = enemyAt(L, x, y); if (e) return { kind: "enemy", enemy: e };
+    const e = enemyAt(L, x, y) || enemyAt(L, me.x, me.y); if (e) return { kind: "enemy", enemy: e };
     const r = rockAt(L, x, y); return r ? { kind: "rock", rock: r } : null;
   }
   const st = stationAt(x, y); return st ? { kind: "station", station: st } : null;
@@ -2186,11 +2186,9 @@ function stepInput(now, dt) {
     const d = depthOf(me.room);
     return d <= 1 ? goTo("world", CAVE_EXIT.x, CAVE_EXIT.y, "down") : goTo("mine:" + (d - 1), MINE_ARRIVE.x, MINE_ARRIVE.y, "down");
   }
-  // tiles that block you (enemies you're already touching don't trap you)
-  const touching = new Set(boxTiles(me.fx, me.fy).map(t => t.join()));
+  // tiles that block you (walls, rocks, stations, trees, water — never enemies)
   const LV = levelOf(me.room);
-  const blocked = (tx, ty) => !walkable(state, me.room, tx, ty) ||
-    (isMine(me.room) && enemyAt(LV, tx, ty) && !touching.has(tx + "," + ty));
+  const blocked = (tx, ty) => !walkable(state, me.room, tx, ty);   // enemies don't block you — walk right through them
   const free = (fx, fy) => boxTiles(fx, fy).every(([tx, ty]) => !blocked(tx, ty));
   const step = WALK_SPEED * pace * dt;
   let nx = me.fx + vx * step, ny = me.fy + vy * step;
@@ -2347,7 +2345,7 @@ canvas.addEventListener("pointerdown", e => {
   }
   else { const st = stationAt(tx, ty); if (st) target = { kind: "station", station: st, x: tx, y: ty }; }
   if (!target) return;
-  if (!adjacent(me, target)) return floatText("Walk next to it first", "#a8977c");
+  if (Math.abs(me.x - target.x) + Math.abs(me.y - target.y) > 1) return floatText("Walk next to it first", "#a8977c");
   me.dir = tx > me.x ? "right" : tx < me.x ? "left" : ty > me.y ? "down" : "up";
   sendMove(); act(target);
 });
