@@ -822,10 +822,14 @@ function lock(g, x, y0, len, w, drift, ch, tip = "r") {
 // O/o pants · B/b boots & gloves · k belt · G buckle
 // frame: 0 = standing, 1–4 = walk (contact, pass, contact, pass)
 const SPRITE_H = 40;
-function chibiGrid(look, dir, frame) {
+// pose: "walk" (uses frame), "raise"/"strike" (mining swing), "wave1"/"wave2", "hurt", "sit", "doze"
+function chibiGrid(look, dir, frame, pose = "walk") {
   const g = newGrid(SPRITE_H);
   const hair = LOOKS.hairStyle[look.hairStyle], hat = LOOKS.hatStyle[look.hatStyle];
-  const b = frame === 2 || frame === 4 ? -1 : 0;              // body bobs up on passing frames
+  const sitting = pose === "sit" || pose === "doze";
+  const special = ["raise", "strike", "wave1", "wave2", "hurt"].includes(pose);
+  const eyesShut = pose === "hurt" || pose === "doze";
+  const b = sitting ? 3 : frame === 2 || frame === 4 ? -1 : 0;  // body bobs up on passing frames; lower when sitting
   const stride = frame === 1 ? 1 : frame === 3 ? -1 : 0;       // +1: left leg forward
   const side = dir === "right", front = dir === "down", back = dir === "up";
   const arm = -stride;                                          // arms swing opposite the legs
@@ -839,7 +843,10 @@ function chibiGrid(look, dir, frame) {
   if (hair === "Long" && side) { rect(g, 7, 8 + b, 13, 24 + b, "R"); for (const x of [8, 11]) lock(g, x, 24 + b, 5, 3, -1, "R"); }
 
   // ---------- legs & tall boots ----------
-  if (!side) {
+  if (sitting) {                                                // sitting on the ground, knees forward
+    rect(g, 12, 29 + b, 19, 33, "O");
+    rect(g, 10, 33, 14, 37, "B"); rect(g, 17, 33, 21, 37, "B"); rect(g, 10, 33, 14, 33, "b"); rect(g, 17, 33, 21, 33, "b");
+  } else if (!side) {
     const endL = 32 + stride, endR = 32 - stride;               // forward leg reaches lower (closer to camera)
     rect(g, 12, 29, 14, endL, "O"); rect(g, 17, 29, 19, endR, "O");
     for (const [x0, x1, e] of [[11, 14, endL], [17, 20, endR]]) { rect(g, x0, e + 1, x1, e + 5, "B"); rect(g, x0, e + 1, x1, e + 1, "b"); }
@@ -860,7 +867,10 @@ function chibiGrid(look, dir, frame) {
       rect(g, 15, 27 + b, 16, 28 + b, "G");                                          // buckle
       rect(g, 15, 21 + b, 15, 25 + b, "c");                                          // shirt seam
     } else rect(g, 13, 18 + b, 18, 18 + b, "W");
-    for (const [x0, a] of [[9, arm], [21, -arm]]) {
+    if (pose === "strike") {                                                         // both hands forward on the handle
+      rect(g, 11, 20 + b, 12, 25 + b, "c"); rect(g, 19, 20 + b, 20, 25 + b, "c"); rect(g, 13, 25 + b, 18, 27 + b, "B");
+    } else for (const [x0, a] of [[9, arm], [21, -arm]]) {
+      if (special && pose !== "strike" && (pose !== "wave1" && pose !== "wave2" || x0 === 21)) continue;   // drawn later
       rect(g, x0, 19 + b + a, x0 + 1, 24 + b + a, "c");                              // sleeve
       rect(g, x0, 25 + b + a, x0 + 1, 27 + b + a, "B");                              // glove
     }
@@ -868,21 +878,27 @@ function chibiGrid(look, dir, frame) {
     rect(g, 13, 18 + b, 19, 26 + b, "C"); rect(g, 13, 26 + b, 19, 26 + b, "c"); rect(g, 18, 18 + b, 19, 18 + b, "W");
     rect(g, 13, 27 + b, 19, 28 + b, "k"); put(g, 19, 27 + b, "G");
     rect(g, 13, 29 + b, 19, 30, "O");
-    const ax = 15 + arm * 2;
-    rect(g, ax, 19 + b, ax + 1, 24 + b, "c"); rect(g, ax, 25 + b, ax + 1, 27 + b, "B");
+    if (pose === "strike") { rect(g, 17, 20 + b, 21, 21 + b, "c"); rect(g, 22, 19 + b, 24, 22 + b, "B"); }
+    else if (pose !== "raise" && pose !== "hurt") {
+      const ax = 15 + arm * 2;
+      rect(g, ax, 19 + b, ax + 1, 24 + b, "c"); rect(g, ax, 25 + b, ax + 1, 27 + b, "B");
+    }
   }
 
   // ---------- neck & head ----------
   rect(g, 14, 16 + b, 17, 17 + b, "s");
   ell(g, hx, 10.5 + b, side ? 6.5 : 6.8, 6.8, "S");
   if (front) {   // diagonal ¾ face: turned slightly to the viewer's right, far eye foreshortened
-    rect(g, 13, 10 + b, 14, 12 + b, "E"); rect(g, 19, 10 + b, 19, 12 + b, "E");
+    if (eyesShut) { rect(g, 13, 11 + b, 14, 11 + b, "r"); put(g, 19, 11 + b, "r"); }
+    else { rect(g, 13, 10 + b, 14, 12 + b, "E"); rect(g, 19, 10 + b, 19, 12 + b, "E"); }
     rect(g, 12, 8 + b, 14, 8 + b, "r"); rect(g, 19, 8 + b, 20, 8 + b, "r");          // brows
     put(g, 18, 12 + b, "s"); put(g, 17, 14 + b, "M"); put(g, 18, 14 + b, "M");      // nose & mouth
+    if (pose === "hurt" || pose === "wave1" || pose === "wave2") rect(g, 17, 14 + b, 18, 15 + b, "M");
     put(g, 12, 13 + b, "p"); put(g, 20, 13 + b, "p");
     rect(g, 22, 13 + b, 22, 15 + b, "s");                                          // far cheek in shadow
   } else if (side) {
-    rect(g, 19, 10 + b, 20, 12 + b, "E"); rect(g, 19, 8 + b, 20, 8 + b, "r");
+    if (eyesShut) rect(g, 19, 11 + b, 20, 11 + b, "r"); else rect(g, 19, 10 + b, 20, 12 + b, "E");
+    rect(g, 19, 8 + b, 20, 8 + b, "r");
     put(g, 22, 11 + b, "S");                                                        // nose
     put(g, 21, 14 + b, "M"); put(g, 19, 13 + b, "p");
     rect(g, 13, 10 + b, 14, 12 + b, "s");                                           // ear
@@ -940,6 +956,19 @@ function chibiGrid(look, dir, frame) {
     rect(g, hx - 4, 4 + b, hx + 3, 5 + b, "y");
     ell(g, hx, 6.5 + b, 13, 2.3, "Y");
     rect(g, hx - 10, 7 + b, hx + 10, 7 + b, "y");
+  }
+
+  // ---------- arms that go over the head / face ----------
+  if (pose === "raise") {
+    if (side) { rect(g, 11, 11 + b, 12, 18 + b, "c"); rect(g, 10, 7 + b, 12, 10 + b, "B"); }
+    else { rect(g, 8, 11 + b, 9, 18 + b, "c"); rect(g, 22, 11 + b, 23, 18 + b, "c"); rect(g, 8, 7 + b, 10, 10 + b, "B"); rect(g, 21, 7 + b, 23, 10 + b, "B"); }
+  } else if (pose === "wave1" || pose === "wave2") {
+    const wx = pose === "wave1" ? 22 : 24;
+    rect(g, 21, 13 + b, 22, 19 + b, "c"); rect(g, wx, 9 + b, wx + 1, 12 + b, "B");
+    rect(g, wx - 1, 12 + b, wx, 13 + b, "c");
+  } else if (pose === "hurt") {
+    if (side) { rect(g, 17, 17 + b, 18, 20 + b, "c"); rect(g, 19, 14 + b, 20, 16 + b, "B"); }
+    else { rect(g, 9, 18 + b, 10, 21 + b, "c"); rect(g, 21, 18 + b, 22, 21 + b, "c"); rect(g, 10, 15 + b, 12, 17 + b, "B"); rect(g, 19, 15 + b, 21, 17 + b, "B"); }
   }
   return g.map(r => r.join(""));
 }
@@ -1158,11 +1187,24 @@ function lookSprites(look) {
   const key = JSON.stringify({ ...look, sheet: undefined });
   if (spriteCache[key]) return spriteCache[key];
   const pal = lookPalette(look), out = {};
+  const P = rows => paint(rows, pal, { passes: 0 });
   for (const dir of ["down", "up", "right"]) {
-    const frames = [0, 1, 2, 3, 4].map(f => chibiGrid(look, dir, f));
-    out[dir] = { stand: paint(frames[0], pal, { passes: 0 }), walk: frames.slice(1).map(f => paint(f, pal, { passes: 0 })) };
-    if (dir === "right") out.left = { stand: paint(mirror32(frames[0]), pal, { passes: 0 }), walk: frames.slice(1).map(f => paint(mirror32(f), pal, { passes: 0 })) };
+    const grids = {
+      stand: chibiGrid(look, dir, 0), idle2: chibiGrid(look, dir, 2),
+      walk: [1, 2, 3, 4].map(f => chibiGrid(look, dir, f)),
+      raise: chibiGrid(look, dir, 0, "raise"), strike: chibiGrid(look, dir, 0, "strike"),
+    };
+    const build = m => ({ stand: P(m(grids.stand)), idle: [P(m(grids.stand)), P(m(grids.idle2))], walk: grids.walk.map(f => P(m(f))),
+                          raise: P(m(grids.raise)), strike: P(m(grids.strike)) });
+    out[dir] = build(x => x);
+    if (dir === "right") out.left = build(mirror32);
   }
+  out.extra = {
+    wave: [P(chibiGrid(look, "down", 0, "wave1")), P(chibiGrid(look, "down", 0, "wave2"))],
+    hurt: P(chibiGrid(look, "down", 0, "hurt")),
+    sit: P(chibiGrid(look, "down", 0, "sit")),
+    doze: P(chibiGrid(look, "down", 0, "doze")),
+  };
   return (spriteCache[key] = out);
 }
 const mirror32 = rows => rows.map(r => [...r].reverse().join(""));
@@ -1430,6 +1472,8 @@ const STATION_ART = {
 const disp = [{ ...SPAWNS[0] }, { ...SPAWNS[1] }];
 const lastRoom = ["mine", "mine"];
 const swing = [0, 0];
+const lastMoved = [0, 0];
+const anim = [null, null];            // short reactions: { type: "wave" | "hurt", from, until }
 let particles = [], floaters = [];
 const rockBorn = {};
 
@@ -1440,6 +1484,10 @@ function onResult(r) {
   render();
   if (!r) return;
   showResult(r);
+  const t0 = performance.now();
+  if (r.seat != null && /reached Miner level|Pickaxe!|forged/.test(r.text || "")) anim[r.seat] = { type: "wave", from: t0 + 500, until: t0 + 2200 };
+  else if (r.fx && r.fx.room === "mine" && !r.ok) anim[r.seat] = { type: "hurt", from: t0 + 480, until: t0 + 1000 };
+  if (/joined the mine/.test(r.text || "")) { anim[0] = anim[1] = { type: "wave", from: t0, until: t0 + 1600 }; }
   if (r.fx) {
     if (r.fx.room === "mine") swing[r.seat] = performance.now();
     setTimeout(() => {
@@ -1518,16 +1566,30 @@ function drawPlayer(seat, now) {
   const present = seat === net.seat || net.connected;
   const moving = Math.abs(d.x - p.x) + Math.abs(d.y - p.y) > 0.02;
   const set = playerSprites(seat)[p.dir || "down"];
-  const img = moving ? set.walk[Math.floor(now / 110) % set.walk.length] : set.stand;
+  const all = playerSprites(seat), ex = all.extra || {};
+  if (moving || lastRoom[seat] !== p.room) lastMoved[seat] = now;
+  const swingT = now - swing[seat], a = anim[seat] && now >= anim[seat].from && now < anim[seat].until ? anim[seat] : null;
+  const waiting = net.connected && state.current !== seat && now - lastMoved[seat] > 7000;
+  let img;
+  if (!present) img = ex.doze || set.stand;                                     // friend away: dozing off
+  else if (swingT < 220) img = set.raise || set.stand;                          // mining swing
+  else if (swingT < 480) img = set.strike || set.stand;
+  else if (a && a.type === "wave" && ex.wave && ex.wave.length) img = ex.wave[Math.floor(now / 180) % ex.wave.length];
+  else if (a && a.type === "hurt" && ex.hurt) img = ex.hurt;
+  else if (moving) img = set.walk[Math.floor(now / 110) % set.walk.length];
+  else if (waiting && ex.sit) img = ex.sit;                                      // sits down while waiting a turn
+  else img = (set.idle && set.idle.length ? set.idle[Math.floor(now / 650) % set.idle.length] : set.stand);
   const w = img.width / K, h = img.height / K;
   const cx = d.x * TS + TS / 2, feet = d.y * TS + TS - (img.sheet ? 4 : 6);   // sprites stand on their feet
   const x = cx - w / 2, y = feet - h + (img.sheet ? 0 : 6);
   const sw = now - swing[seat];
-  ctx.globalAlpha = present ? 1 : 0.35;
+  ctx.globalAlpha = present ? 1 : 0.8;
   ctx.fillStyle = "#00000055"; ctx.beginPath(); ctx.ellipse(cx, d.y * TS + TS - 4, 15, 5, 0, 0, Math.PI * 2); ctx.fill();
-  if (sw < 220) drawSprite(pickSprite(p.pick, "raised"), cx, feet - 66);
+  const tool = !all.drawsTool;
+  if (tool && sw < 220) drawSprite(pickSprite(p.pick, "raised"), cx, feet - 66);
   drawSprite(img, x, y);
-  if (sw >= 220 && sw < 480) {
+  if (!present) drawLabel(["z", "zZ", "zZz"][Math.floor(now / 500) % 3], cx + 18, y + 6 + Math.sin(now / 400) * 2, "#ffffff", 13);
+  if (tool && sw >= 220 && sw < 480) {
     const dir = p.dir || "down";
     const off = { right: [9, -33], left: [-33, -33], down: [-12, -18], up: [-12, -63] }[dir];
     drawSprite(pickSprite(p.pick, dir), cx + off[0], feet + off[1]);
@@ -1831,10 +1893,17 @@ async function loadCustomSprites() {
       const img = await loadImage("sprites/" + ch.file);
       const fw = ch.frameWidth || 32, fh = ch.frameHeight || 40, sc = ch.scale || 2;
       const rows = { down: 0, left: 1, right: 2, up: 3, ...(ch.rows || {}) };
-      const idle = ch.idle ?? 0, walk = ch.walk || [1, 2, 3, 4];
+      const idle = [].concat(ch.idle ?? 0), walk = ch.walk || [1, 2, 3, 4], mine = ch.mine || [];
+      const F = (col, row) => sliceFrame(img, col, row, fw, fh, sc);
       const sprites = {};
-      for (const d of ["down", "left", "right", "up"])
-        sprites[d] = { stand: sliceFrame(img, idle, rows[d], fw, fh, sc), walk: walk.map(col => sliceFrame(img, col, rows[d], fw, fh, sc)) };
+      for (const d of ["down", "left", "right", "up"]) {
+        const stand = F(idle[0], rows[d]);
+        sprites[d] = { stand, idle: idle.map(c => F(c, rows[d])), walk: walk.map(c => F(c, rows[d])),
+                       raise: mine[0] != null ? F(mine[0], rows[d]) : stand, strike: mine[1] != null ? F(mine[1], rows[d]) : stand };
+      }
+      const xr = ch.extrasRow, X = col => (xr != null && col != null) ? F(col, xr) : null;
+      sprites.extra = { wave: [].concat(ch.wave ?? []).map(X).filter(Boolean), hurt: X(ch.hurt), sit: X(ch.sit), doze: X(ch.doze ?? ch.sleep) };
+      sprites.drawsTool = !!ch.drawsTool;
       CUSTOM.characters[ch.id] = { name: String(ch.name || ch.id).slice(0, 24), sprites };
       CUSTOM.list.push(ch.id);
     } catch (e) { console.warn("Couldn't load sprite sheet", ch.file, e); }
