@@ -85,6 +85,8 @@
   .xp i { display: block; height: 100%; background: var(--gold); }
   .turnline { flex: 1; min-width: 0; text-align: center; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .turnline .you { color: var(--gold); }
+  .pips { letter-spacing: 1px; color: var(--gold); }
+  .pips i { font-style: normal; color: #5a4c3a; }
   .hud-btns { display: flex; gap: 6px; }
 
   .playarea { flex: 1; min-height: 0; display: grid; gap: 6px;
@@ -189,7 +191,7 @@
 <body>
 <header>
   <h1>⛏️ Mine with friends</h1>
-  <p>Mine ore, smelt bars, craft better pickaxes. Walking is free; mining, smelting, crafting or buying uses your turn.</p>
+  <p>Mine ore, smelt bars, craft better pickaxes. 5 actions per turn; walking is free.</p>
 </header>
 
 <main class="screens" id="screens">
@@ -244,6 +246,7 @@
     <div class="me-chip" id="me-chip"></div>
     <div class="turnline" id="turn-line"></div>
     <div class="hud-btns">
+      <button id="end-btn" class="btn-gold">End turn</button>
       <button id="view-btn"></button>
       <button id="panel-btn">📊 Stats</button>
     </div>
@@ -278,7 +281,7 @@
         <div class="log" id="log"></div>
       </div>
       <div class="card keys-wrap">
-        <div class="keys"><kbd>WASD</kbd>/<kbd>Arrows</kbd> walk · <kbd>Space</kbd> mine a rock / use the cart, forge or anvil you face · <kbd>Esc</kbd> close a menu ·
+        <div class="keys"><kbd>WASD</kbd>/<kbd>Arrows</kbd> walk · <kbd>Space</kbd> mine a rock / use the cart, forge or anvil you face · <kbd>Esc</kbd> close a menu · <kbd>T</kbd> end turn ·
           walk through the <b>UPGRADES</b> door to change rooms · Turn <b id="turn-num">1</b></div>
       </div>
       <div class="side-foot">
@@ -392,7 +395,7 @@ function newPlayer(name, seat) {
 function newGame() {
   const s = {
     players: [newPlayer("Player 1", 0), newPlayer("Player 2", 1)],
-    current: 0, turn: 1,
+    current: 0, turn: 1, actionsLeft: 5,
     team: { mined: 0, fails: 0, goldEarned: 0, ores: {} },
     log: [], rocks: [], nextRockId: 1,
   };
@@ -408,6 +411,7 @@ function migrate(s) {   // bring older saves up to date
     p.charm = p.charm || 0; p.dynamite = p.dynamite || 0;
   });
   if (!s.rocks) { s.rocks = []; s.nextRockId = 1; }
+  if (s.actionsLeft == null) s.actionsLeft = 5;
   fillRocks(s);
   return s;
 }
@@ -486,9 +490,16 @@ function spawnRock(s) {
 }
 function fillRocks(s) { while (s.rocks.length < ROCK_COUNT && spawnRock(s)); }
 
+const ACTIONS_PER_TURN = 5;
 function endTurn() {
   state.current = 1 - state.current;
   if (state.current === 0) state.turn++;
+  state.actionsLeft = ACTIONS_PER_TURN;
+}
+// Every mine / smelt / craft / buy costs one action; the turn passes when they run out.
+function useAction() {
+  state.actionsLeft = (state.actionsLeft ?? ACTIONS_PER_TURN) - 1;
+  if (state.actionsLeft <= 0) endTurn();
 }
 
 // Host only: applies an action for a seat. Returns a result, or null if not allowed.
@@ -497,6 +508,12 @@ function applyAction(seat, action) {
   if (seat !== state.current) return null;
   if (action.x != null && action.room === p.room && walkable(state, p.room, action.x, action.y)) { p.x = action.x; p.y = action.y; }
   if (DIRS[action.dir]) p.dir = action.dir;
+
+  if (action.type === "pass") {
+    const left = state.actionsLeft ?? ACTIONS_PER_TURN;
+    endTurn();
+    return { text: `${p.name} ended their turn${left > 0 ? ` with ${left} action${left > 1 ? "s" : ""} unused` : ""}.`, ok: true, neutral: true, seat };
+  }
 
   if (action.type === "mine") {
     if (p.room !== "mine") return null;
@@ -528,7 +545,7 @@ function applyAction(seat, action) {
       text = `${p.name} swung at ${info.name}… it cracked but held. (+${consolation} XP, easier next time)`;
     }
     addLog(text, ok);
-    endTurn();
+    useAction();
     return { text, ok, seat, fx: { room: "mine", x: rock.x, y: rock.y, color: info.color, label: ok ? `+${gold} 🪙` : "Crack!" } };
   }
 
@@ -546,7 +563,7 @@ function applyAction(seat, action) {
     p.gold -= price;
     text = `${p.name} ${item.apply(p)} for ${price} gold.`;
     if (levelUp(p)) text += ` Reached Miner level ${p.level}!`;
-    addLog(text, true); endTurn();
+    addLog(text, true); useAction();
     return { text, ok: true, seat, fx: fx("#f2c14e", `-${price} 🪙`) };
   }
 
@@ -559,7 +576,7 @@ function applyAction(seat, action) {
     if (coalPerBar(ore)) p.bag.Coal -= n * coalPerBar(ore);
     p.bars[ore] = (p.bars[ore] || 0) + n;
     text = `${p.name} smelted ${n} ${barName(ore)}${n > 1 ? "s" : ""} at the forge.`;
-    addLog(text, true); endTurn();
+    addLog(text, true); useAction();
     return { text, ok: true, seat, fx: fx("#ff8a1e", `+${n} ${barName(ore)}`) };
   }
 
@@ -569,7 +586,7 @@ function applyAction(seat, action) {
     p.bars[c.ore] -= c.need;
     p.pick = c.tier;
     text = `${p.name} forged a ${PICKAXES[c.tier].name} Pickaxe on the anvil! ⛏️`;
-    addLog(text, true); endTurn();
+    addLog(text, true); useAction();
     return { text, ok: true, seat, fx: fx(PICKAXES[c.tier].color, `${PICKAXES[c.tier].name} Pickaxe!`) };
   }
   return null;
@@ -772,11 +789,11 @@ function randomLook() {
 // K outline · S/s skin · E eyes · C/c shirt · O/o pants · B shoes · R/r hair · Y/y hat · L lamp
 const BASE_HEAD = {
   down: ["................", "................", ".....KKKKKK.....", "....KSSSSSSK....", "...KSSSSSSSSK...",
-         "...KSSSSSSSSK...", "...KSESSSSESK...", "...KSSSSSSSSK...", "....KsSSSSsK...."],
+         "...KSSSSSSSSK...", "...KSESSSSESK...", "...KpESSSSEpK...", "....KsSSSSsK...."],
   up:   ["................", "................", ".....KKKKKK.....", "....KSSSSSSK....", "...KSSSSSSSSK...",
          "...KSSSSSSSSK...", "...KSSSSSSSSK...", "...KSSSSSSSSK...", "....KsSSSSsK...."],
   right:["................", "................", "....KKKKKK......", "...KSSSSSSK.....", "...KSSSSSSSK....",
-         "...KSSSSSSSK....", "...KSSSSSESK....", "...KSSSSSSSK....", "....KsSSSsK....."],
+         "...KSSSSSSSK....", "...KSSSSSESK....", "...KSSSSpESK....", "....KsSSSsK....."],
 };
 const HAIR = {
   down: {
@@ -856,11 +873,12 @@ function headRows(look, dir) {
   rows = overlay(rows, HATS[dir][LOOKS.hatStyle[look.hatStyle]]);
   return rows;
 }
+const blush = skin => { const [r, g, b] = rgbOf(skin); return `rgb(${Math.min(255, r + 18)},${Math.round(g * 0.78)},${Math.round(b * 0.78)})`; };
 function lookPalette(look) {
   const c = (k) => LOOKS[k][look[k]][0];
   return {
-    K: "#1a1410", E: "#1a1410", L: "#fff6c0",
-    S: c("skin"), s: shade(c("skin"), 0.8),
+    K: "#2a1814", E: "#2a1c30", L: "#fff6c0",
+    S: c("skin"), s: shade(c("skin"), 0.8), p: blush(c("skin")),
     R: c("hairColor"), r: shade(c("hairColor"), 0.75),
     Y: c("hatColor"), y: shade(c("hatColor"), 0.72),
     C: c("shirt"), c: shade(c("shirt"), 0.72),
@@ -910,8 +928,9 @@ function mkCanvas(w, h) { const c = document.createElement("canvas"); c.width = 
 // 32-bit look: sprites are authored on a 16 grid, then upscaled to 32x32 with Scale2x
 // (smooths diagonals), outlines are thinned back to 1px, and a light pass adds a top-left
 // highlight and bottom-right shadow to every coloured region.
-const K = 4 / 3;         // world units → device pixels (48-unit tile = 64px = 32 art pixels × 2)
-const HD_PX = 2;         // device pixels per 32-res art pixel
+const K = 4 / 3;         // world units → device pixels (48-unit tile = 64 device px = 64 art pixels)
+const HD_PX = 2;         // device pixels per art pixel (crisp 32x32 sprites shown at 2x, GBA-style)
+const UPSCALE_PASSES = 1; // 16 → 32
 const OPAQUE_NO_SHADE = new Set(["K", "E", "L", "."]);
 function scale2x(grid) {
   const h = grid.length, w = grid[0].length, at = (x, y) => (y < 0 || y >= h || x < 0 || x >= w) ? "." : grid[y][x];
@@ -935,24 +954,81 @@ function thinOutline(g) {
     return ch;
   }));
 }
+// Strip the upscaled outer outline (it gets fuzzy) and draw a fresh, clean 1px outline
+// around the coloured shape. Interior lines between colours are kept.
+function reoutline(g) {
+  const h = g.length, w = g[0].length;
+  let cur = g.map(r => r.slice());
+  for (let changed = true; changed;) {
+    changed = false;
+    const at = (x, y) => (y < 0 || y >= h || x < 0 || x >= w) ? "." : cur[y][x];
+    const next = cur.map((row, y) => row.map((ch, x) => {
+      if (ch === "K" && [at(x, y - 1), at(x, y + 1), at(x - 1, y), at(x + 1, y)].includes(".")) { changed = true; return "."; }
+      return ch;
+    }));
+    cur = next;
+  }
+  const at = (x, y) => (y < 0 || y >= h || x < 0 || x >= w) ? "." : cur[y][x];
+  return cur.map((row, y) => row.map((ch, x) =>
+    ch === "." && [at(x, y - 1), at(x, y + 1), at(x - 1, y), at(x + 1, y)].some(c => c !== ".") ? "K" : ch));
+}
+// Remove outline stubs left by upscaling: an outline pixel touching at most one other
+// solid pixel (4-way) and nothing coloured is a stray speck.
+function despeckle(g) {
+  const h = g.length, w = g[0].length, at = (x, y) => (y < 0 || y >= h || x < 0 || x >= w) ? "." : g[y][x];
+  return g.map((row, y) => row.map((ch, x) => {
+    if (ch !== "K") return ch;
+    const n = [at(x, y - 1), at(x, y + 1), at(x - 1, y), at(x + 1, y)];
+    const solid = n.filter(c => c !== ".").length, colored = n.some(c => c !== "." && c !== "K");
+    return (!colored && solid <= 1) ? "." : ch;
+  }));
+}
 const shadeCache = {};
 const shadeOf = (hex, f) => shadeCache[hex + f] || (shadeCache[hex + f] = hex.startsWith("#") ? shade(hex, f) : hex);
-function paint(rows, pal) {
+// Handheld-tactics-RPG look: crisp 32x32 sprites, coloured "sel-out" outlines (each outline
+// pixel is a deep shade of the colour it wraps, not flat black), soft 3-tone shading lit from
+// the top-left, and glossy eyes with a highlight.
+const rgbOf = c => c.startsWith("#") ? [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16)) : c.match(/\d+/g).slice(0, 3).map(Number);
+const OUTLINE_INK = [42, 24, 20];
+function seloutColor(base, f, t = 0.4) {
+  const [r, g, b] = rgbOf(base);
+  const mix = (v, k) => Math.round(v * f * (1 - t) + OUTLINE_INK[k] * t);
+  return `rgb(${mix(r, 0)},${mix(g, 1)},${mix(b, 2)})`;
+}
+function paint(rows, pal, opts = {}) {
   const w = Math.max(...rows.map(r => r.length));
   let g = rows.map(r => [...r.padEnd(w, ".")]);
-  g = thinOutline(scale2x(g));
+  for (let i = 0; i < UPSCALE_PASSES; i++) g = scale2x(g);
+  if (!opts.rawOutline) g = reoutline(g);
   const h2 = g.length, w2 = g[0].length, at = (x, y) => (y < 0 || y >= h2 || x < 0 || x >= w2) ? "." : g[y][x];
   const edge = c => c === "." || c === "K";
+  const fill = c => c !== "." && c !== "K" && pal[c];
   const c = mkCanvas(w2 * HD_PX, h2 * HD_PX), ctx2 = c.getContext("2d");
   for (let y = 0; y < h2; y++) for (let x = 0; x < w2; x++) {
     const ch = g[y][x];
     if (ch === "." || !pal[ch]) continue;
     let col = pal[ch];
-    if (!OPAQUE_NO_SHADE.has(ch)) {
-      if (edge(at(x, y - 1)) || edge(at(x - 1, y))) col = shadeOf(pal[ch], 1.18);
-      else if (edge(at(x, y + 1)) || edge(at(x + 1, y))) col = shadeOf(pal[ch], 0.8);
+    if (ch === "K") {
+      // sel-out: take the colour of the fill this outline wraps; bottom/right edges go darker
+      const below = [[0, -1], [-1, 0], [0, 1], [1, 0], [-1, -1], [1, -1], [-1, 1], [1, 1]]
+        .map(([dx, dy]) => ({ c: at(x + dx, y + dy), dx, dy })).find(n => fill(n.c) && n.c !== "E");
+      if (below && !opts.rawOutline) {
+        const lit = below.dy > 0 || below.dx > 0;      // fill is below/right → this is a top/left edge
+        col = seloutColor(pal[below.c], lit ? 0.62 : 0.42, lit ? 0.3 : 0.45);
+      }
+    } else if (ch === "E") {
+      // glossy eyes: highlight on the top-left pixel of each eye
+      if (at(x, y - 1) !== "E" && at(x - 1, y) !== "E") col = "#fff6e6";
+      else if (at(x, y + 1) !== "E") col = "#4a3a6a";
+    } else if (!OPAQUE_NO_SHADE.has(ch)) {
+      let f = 1;
+      if (edge(at(x, y - 1)) || edge(at(x - 1, y))) f = 1.16;
+      else if (edge(at(x, y + 1)) || edge(at(x + 1, y))) f = 0.76;
+      else if (edge(at(x, y + 2)) || edge(at(x + 2, y))) f = 0.88;
+      if (f !== 1) col = shadeOf(pal[ch], f);
     }
-    ctx2.fillStyle = col; ctx2.fillRect(x * HD_PX, y * HD_PX, HD_PX, HD_PX);
+    ctx2.fillStyle = col;
+    ctx2.fillRect(x * HD_PX, y * HD_PX, HD_PX, HD_PX);
   }
   return c;
 }
@@ -1005,7 +1081,7 @@ function rockSprite(level, cracks) {
   const ore = ROCKS[level - 1].color;
   const c = paint(ROCK_MAP, { K: "#1a1410", G: "#6f6a64", g: "#4e4a46", l: "#8e8880", O: ore, o: shade(ore, 1.35) });
   const g = c.getContext("2d");
-  for (let i = 0; i < cracks; i++) g.drawImage(paint(CRACKS[i], { K: "#15110e" }), 0, 4 * 2 * HD_PX);
+  for (let i = 0; i < cracks; i++) g.drawImage(paint(CRACKS[i], { K: "#15110e" }, { rawOutline: true }), 0, 4 * (1 << UPSCALE_PASSES) * HD_PX);
   return (rockCache[key] = c);
 }
 
@@ -1059,6 +1135,12 @@ function makeBg(drawTile) {
   const h = S / 2;   // one 32-res art pixel, in world units
   const px = (x, y, w, hh, col) => { g.fillStyle = col; g.fillRect(x, y, w * h, hh * h); };
   drawTile(g, px, h, n => Math.floor(rnd() * n), rnd);
+  // grain: single art-pixel flecks of light and shadow across every tile
+  const q = S / 2;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) for (let i = 0; i < 24; i++) {
+    g.fillStyle = rnd() < .5 ? "rgba(0,0,0,0.16)" : "rgba(255,240,210,0.06)";
+    g.fillRect(x * TS + Math.floor(rnd() * 32) * q, y * TS + Math.floor(rnd() * 32) * q, q, q);
+  }
   return c;
 }
 
@@ -1153,22 +1235,22 @@ const backgrounds = {
 const STATION_ART = {
   cart: paint([
     "................",
-    "....KKK..KKK....",
-    "...KYYYKKRRRK...",
-    "...KYyYKKRrRK.K.",
-    "..KKKKKKKKKKKKGK",
-    "..KWWWWWWWWWWKGK",
-    "..KWwWWwWWwWWK.K",
-    "..KWWWWWWWWWWKK.",
-    "..KwwwwwwwwwwK..",
-    "..KKKKKKKKKKKKKK",
-    "...KDK....KDK..K",
+    "....KYYK.KRRK...",
+    "...KYYYYKRRRRK..",
+    "...KYyYYKRrRRK.G",
+    "..kkkkkkkkkkkkkG",
+    "..kWWWWWWWWWWkk.",
+    "..kWwWWwWWwWWk..",
+    "..kWWWWWWWWWWk..",
+    "..kwwwwwwwwwwk..",
+    "..kkkkkkkkkkkkk.",
+    "...kDk....kDk...",
     "..KDdDK..KDdDK..",
     "..KDDDK..KDDDK..",
     "...KKK....KKK...",
     "................",
     "................",
-  ], { K: "#1a1410", W: "#a06c40", w: "#7a4e2a", Y: "#e8b060", y: "#c98a3e", R: "#3fdc7a", r: "#1f7a3e", G: "#ffd23f", D: "#5a5550", d: "#8e8880" }),
+  ], { K: "#1a1410", k: "#4a2c16", W: "#a06c40", w: "#7a4e2a", Y: "#e8b060", y: "#c98a3e", R: "#3fdc7a", r: "#1f7a3e", G: "#ffd23f", D: "#5a5550", d: "#8e8880" }),
   forge: paint([
     ".....KKKKKK.....",
     ".....KGGGGK.....",
@@ -1220,7 +1302,6 @@ const myRoom = () => state.players[net.seat].room;
 function onResult(r) {
   render();
   if (!r) return;
-  if (r.seat === net.seat && r.fx && r.fx.room === "upgrades") closeMenu();
   showResult(r);
   if (r.fx) {
     if (r.fx.room === "mine") swing[r.seat] = performance.now();
@@ -1403,6 +1484,10 @@ function frame(now) {
     drawTooltip();
     vctx.drawImage(world, view.x * K, view.y * K, view.w * K, view.h * K, 0, 0, canvas.width, canvas.height);
     updateActButton();
+    if (menuOpen) {   // walked (or got moved) away from the station → close its menu
+      const st = STATIONS.find(x => x.id === menuOpen), me = state.players[net.seat];
+      if (me.room !== "upgrades" || !adjacent(me, st)) closeMenu();
+    }
   }
   requestAnimationFrame(frame);
 }
@@ -1485,7 +1570,7 @@ function renderMenu() {
   document.getElementById("menu-title").textContent = { cart: "🛒 Upgrade Cart", forge: "🔥 Forge", anvil: "⚒️ Anvil" }[st.id];
   const note = document.getElementById("menu-note");
   note.className = "menu-note" + (myTurn ? " turn" : "");
-  note.textContent = myTurn ? "Your turn — choosing one option below uses your turn."
+  note.textContent = myTurn ? `Your turn — each option uses 1 action (${state.actionsLeft ?? ACTIONS_PER_TURN} left).`
     : !net.connected ? "Waiting for your friend to join." : "Not your turn — you can look, but you'll have to wait to use it.";
   const dis = ok => (myTurn && ok) ? "" : "disabled";
   let html = "";
@@ -1548,9 +1633,10 @@ function updateActButton() {
 
 document.addEventListener("keydown", e => {
   if (!inGame() || e.target.tagName === "INPUT") return;
-  if (menuOpen) { if (e.code === "Escape" || e.code === "KeyQ") closeMenu(); return; }
+  if (menuOpen) { if (["Escape", "KeyQ", "Space"].includes(e.code)) { e.preventDefault(); closeMenu(); } return; }
   if (KEYMAP[e.code]) { e.preventDefault(); pressDir(KEYMAP[e.code]); }
   else if (e.code === "Space" || e.code === "Enter" || e.code === "KeyE") { e.preventDefault(); if (!e.repeat) act(); }
+  else if (e.code === "KeyT" && !e.repeat) endMyTurn();
 });
 document.addEventListener("keyup", e => { if (KEYMAP[e.code]) releaseDir(KEYMAP[e.code]); });
 window.addEventListener("blur", () => (held.length = 0));
@@ -1753,11 +1839,14 @@ function renderHud() {
     `<span>⛏️ <b>${PICKAXES[me.pick].name}</b></span>${buffs(me) ? `<span>${buffs(me)}</span>` : ""}`;
   document.getElementById("turn-num").textContent = state.turn;
   const el = document.getElementById("turn-line");
+  document.getElementById("end-btn").disabled = !(net.connected && state.current === net.seat);
   if (!net.connected) { el.textContent = "Waiting for both players"; return; }
   const where = other.room !== me.room ? (other.room === "mine" ? " (in the mine)" : " (in Upgrades)") : "";
+  const left = state.actionsLeft ?? ACTIONS_PER_TURN;
+  const pips = `<span class="pips" title="${left} of ${ACTIONS_PER_TURN} actions left">${"●".repeat(left)}<i>${"●".repeat(ACTIONS_PER_TURN - left)}</i></span>`;
   el.innerHTML = state.current === net.seat
-    ? `<span class="you">Your turn</span> — mine, smelt, craft or buy`
-    : `${escapeHtml(state.players[state.current].name)}'s turn${where}`;
+    ? `<span class="you">Your turn</span> ${pips} ${left} action${left === 1 ? "" : "s"} left`
+    : `${escapeHtml(state.players[state.current].name)}'s turn${where} ${pips}`;
 }
 
 function render() {
@@ -1770,6 +1859,11 @@ function escapeHtml(s) {
 }
 
 // ================= Buttons =================
+function endMyTurn() {
+  if (!net.connected || state.current !== net.seat) return;
+  sendAction({ type: "pass" });
+}
+document.getElementById("end-btn").onclick = endMyTurn;
 document.getElementById("view-btn").onclick = () => setViewMode(viewMode === "follow" ? "full" : "follow");
 setViewMode(viewMode);
 document.getElementById("panel-btn").onclick = () => document.getElementById("side").classList.add("open");

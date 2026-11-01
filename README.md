@@ -13,12 +13,12 @@ Players connect directly browser-to-browser (via [PeerJS](https://peerjs.com)), 
 ## How to play
 - Each player is a pixel-art miner. **Walk any time** with WASD / arrow keys (or the on-screen pad on phones). Walking never uses a turn.
 - There are two rooms: the **mine** and the **Upgrades room**. Walk through the UPGRADES door in the mine's top wall (and the MINE door at the bottom of the Upgrades room) to switch. Each player moves between rooms on their own.
-- One action per turn. Each of these **uses your turn**:
+- Each turn has **5 actions**. Each of these uses one action (press **End turn** or **T** to pass early):
   - **Mine** (mine): face a rock and press **Space** / tap **Mine**. Rocks are random, levels 1–10; green badges are ones you can mine. Success gives gold, XP and the **ore** goes in your bag. A miss cracks the rock, making it easier next time.
-  - **Smelt** (🔥 Forge, Upgrades room): 2 ore + 1 Coal → 1 bar (Stone needs no coal and makes Stone Bricks). Smelt one or all you can afford in a single turn.
+  - **Smelt** (🔥 Forge, Upgrades room): 2 ore + 1 Coal → 1 bar (Stone needs no coal and makes Stone Bricks). Smelt one or all you can afford for a single action.
   - **Craft** (⚒️ Anvil, Upgrades room): forge your next pickaxe from bars of its material — Stone ×3, Copper ×3, Iron ×3, Silver/Gold/Emerald ×4, Ruby/Diamond/Mythril ×5.
   - **Buy** (🛒 Upgrade Cart, Upgrades room) with gold: 🍀 Lucky Charm (+15% on 3 swings), 🧨 Dynamite (next swing can't miss), 🥪 Miner's Lunch (half a level of XP), 🪨 Sack of Coal (3 Coal).
-- Walking up to the cart, forge or anvil and pressing **Space** / **Use** opens its menu. Looking is free — only confirming an option uses your turn.
+- Walking up to the cart, forge or anvil and pressing **Space** / **Use** opens its menu. Looking is free — only confirming an option uses an action.
 - The **📊 Stats** panel shows both players' bags and bars, team progress, milestones and the log. On phones the whole game fits on one screen.
 
 ## Saving
