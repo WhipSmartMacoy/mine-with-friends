@@ -1591,9 +1591,18 @@ function makeBg(drawTile, lighting, seed0 = 12345) {
   return c;
 }
 
-const backgrounds = {
-  mine: makeBg((g, px, h, ri, rnd) => {
+// Mine room background. With the textures from sprites/tiles loaded, the floor is "Mine BG" and the
+// perimeter walls are "Blocks"; until they load (or if missing) the hand-drawn look is used.
+function buildMineBg(tex) {
+  return makeBg((g, px, h, ri, rnd) => {
     const inside = ROOMS.mine.inside;
+    if (tex) {
+      g.drawImage(tex.bg, 0, 0, W * TS, H * TS);                       // Mine BG: the floor layer
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++)
+        if (!inside(x, y)) g.drawImage(tex.blocks, x * TS, y * TS, TS, TS);   // Blocks: perimeter walls
+      px(TS, 2 * TS, (W - 2) * 32, 3, "rgba(20,10,30,0.45)");                  // shadow under the top wall
+      px(TS, 2 * TS, 3, (H - 3) * 32, "rgba(20,10,30,0.3)");
+    } else {
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const X = x * TS, Y = y * TS;
       if (inside(x, y)) {                                   // clean earthen floor tiles
@@ -1625,6 +1634,7 @@ const backgrounds = {
 
       }
     }
+    }
     for (const tx of TORCHES) {
       px(tx * TS + 14 * h, TS + 12 * h, 4, 12, "#6a4024"); px(tx * TS + 14 * h, TS + 12 * h, 1, 12, "#9a6a3a");
       px(tx * TS + 12 * h, TS + 10 * h, 8, 2, "#4a2a1a");
@@ -1651,8 +1661,13 @@ const backgrounds = {
     const vg = g.createRadialGradient(W * TS / 2, H * TS / 2, 3 * TS, W * TS / 2, H * TS / 2, 10.5 * TS);
     vg.addColorStop(0, "rgba(40,20,60,0)"); vg.addColorStop(1, "rgba(40,20,60,0.32)");   // soft edge shade
     g.fillStyle = vg; g.fillRect(fx, fy, fw, fh);
-  }),
-};
+  });
+}
+const MINE_TEX = {};
+const backgrounds = { mine: buildMineBg(null) };
+Promise.all([loadImage("sprites/tiles/mine-bg.png"), loadImage("sprites/tiles/blocks.png")])
+  .then(([bg, blocks]) => { backgrounds.mine = buildMineBg({ bg, blocks }); }).catch(() => {});
+
 
 // ---- Overworld room backgrounds (drawn on demand, a few kept in memory)
 function treeGrid() {
