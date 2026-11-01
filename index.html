@@ -7,31 +7,33 @@
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <style>
   :root {
-    --bg: #1b1712; --panel: #2a241c; --panel2: #352d23; --line: #4a3f31;
-    --text: #f1e6d3; --muted: #a8977c; --gold: #f2c14e; --good: #7bc96f; --bad: #e0675a;
-    --p1: #5fb3e6; --p2: #e68a5f;
+    --bg: #1a1838; --panel: linear-gradient(180deg, #4a62b8 0%, #2a3a8a 55%, #22307a 100%); --panel2: rgba(12, 18, 60, 0.45); --line: #f4ecd0;
+    --text: #ffffff; --muted: #c0ccf4; --gold: #ffd860; --good: #9af08a; --bad: #ff9a8a;
+    --p1: #8fd0ff; --p2: #ffb08a;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; }
   body {
     font-family: "Trebuchet MS", system-ui, sans-serif; color: var(--text);
-    background: radial-gradient(ellipse at top, #2c241a, var(--bg) 70%); min-height: 100vh;
+    background: radial-gradient(ellipse at top, #34306a, var(--bg) 70%); min-height: 100vh; text-shadow: 1px 1px 0 #0c1238;
   }
   body.ingame { overflow: hidden; height: 100vh; height: 100dvh; }
   body.ingame header { display: none; }
   header { text-align: center; padding: 14px 12px 4px; }
-  h1 { margin: 0; font-size: 2rem; letter-spacing: 1px; color: var(--gold); text-shadow: 0 3px 0 #6b4f12; }
+  h1 { margin: 0; font-size: 2rem; letter-spacing: 1px; color: var(--gold); text-shadow: 2px 2px 0 #8a4a10, 4px 4px 0 #0c1238; }
   header p { margin: 4px 0 0; color: var(--muted); font-size: .9rem; }
   main.screens { max-width: 1000px; margin: 0 auto; padding: 10px; }
   .hidden { display: none !important; }
-  .card { background: var(--panel); border: 2px solid var(--line); border-radius: 12px; padding: 12px; }
-  button { font-family: inherit; cursor: pointer; border-radius: 8px; border: 2px solid var(--line);
-           background: #4b3e2c; color: var(--text); padding: 7px 12px; font-weight: bold; }
+  .card { background: var(--panel); border: 2px solid var(--line); border-radius: 8px; padding: 12px;
+          box-shadow: inset 0 0 0 2px #141c48, 0 3px 0 #0a0e28; }
+  button { font-family: inherit; cursor: pointer; border-radius: 6px; border: 2px solid #f4ecd0;
+           background: linear-gradient(180deg, #6a7ed0, #3a4c9a); color: #fff; padding: 7px 12px; font-weight: bold;
+           text-shadow: 1px 1px 0 #0c1238; box-shadow: inset 0 0 0 1px #141c48; }
   button:hover:not(:disabled) { filter: brightness(1.15); }
   button:disabled { opacity: .4; cursor: not-allowed; }
-  .btn-gold { background: var(--gold); color: #2a1d05; border-color: #b68a22; }
-  input.field { font-family: inherit; font-size: 1rem; padding: 9px 10px; border-radius: 8px; border: 2px solid var(--line);
-                background: #1f1a14; color: var(--text); width: 100%; }
+  .btn-gold { background: linear-gradient(180deg, #ffe890, #f0b840); color: #3a2208; border-color: #fff4d0; text-shadow: none; }
+  input.field { font-family: inherit; font-size: 1rem; padding: 9px 10px; border-radius: 6px; border: 2px solid var(--line);
+                background: #141c48; color: var(--text); width: 100%; }
 
   /* Lobby */
   .lobby { max-width: 520px; margin: 20px auto; }
@@ -50,17 +52,17 @@
   .creator label { display: block; color: var(--muted); font-size: .85rem; margin: 10px 0 4px; }
   .creator-grid { display: grid; grid-template-columns: 300px 1fr; gap: 16px; align-items: start; }
   .preview-box { display: flex; flex-direction: column; gap: 8px; align-items: center; position: sticky; top: 8px; }
-  #preview { width: 300px; height: 130px; image-rendering: pixelated; border-radius: 10px; border: 2px solid #120f0c; background: #3a2f25; }
+  #preview { width: 300px; height: 130px; image-rendering: pixelated; border-radius: 6px; border: 2px solid #f4ecd0; background: #a8805a; }
   .opt { margin-top: 10px; }
   .opt-title { color: var(--muted); font-size: .8rem; text-transform: uppercase; margin-bottom: 4px; }
   .choices { display: flex; flex-wrap: wrap; gap: 6px; }
   .choices button.style { font-size: .82rem; padding: 5px 10px; }
   .choices button.style.on { background: var(--gold); color: #2a1d05; border-color: #b68a22; }
-  .swatch { width: 30px; height: 30px; padding: 0; border-radius: 50%; border: 3px solid #120f0c; }
+  .swatch { width: 30px; height: 30px; padding: 0; border-radius: 50%; border: 3px solid #141c48; box-shadow: none; }
   .swatch.on { outline: 3px solid var(--gold); outline-offset: 1px; }
   .done-btn { width: 100%; margin-top: 16px; padding: 11px; font-size: 1.05rem; }
   .me-bar { display: flex; align-items: center; gap: 10px; background: var(--panel2); border-radius: 10px; padding: 8px 10px; margin-bottom: 4px; }
-  #me-preview { width: 48px; height: 48px; image-rendering: pixelated; background: #3a2f25; border-radius: 8px; }
+  #me-preview { width: 48px; height: 48px; image-rendering: pixelated; background: #a8805a; border-radius: 6px; border: 2px solid #f4ecd0; }
   @media (max-width: 680px) {
     .creator-grid { grid-template-columns: 1fr; }
     .preview-box { position: static; }
@@ -71,7 +73,7 @@
   .app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; padding: 6px;
          padding-bottom: max(6px, env(safe-area-inset-bottom)); gap: 6px; max-width: 1400px; margin: 0 auto; }
   .topbar, .hudbar { display: flex; align-items: center; gap: 8px; background: var(--panel); border: 2px solid var(--line);
-                     border-radius: 10px; padding: 5px 8px; flex-wrap: nowrap; min-width: 0; }
+                     border-radius: 8px; padding: 5px 8px; flex-wrap: nowrap; min-width: 0; box-shadow: inset 0 0 0 2px #141c48; }
   .topbar { font-size: .85rem; justify-content: space-between; }
   .topbar button, .hudbar button { font-size: .75rem; padding: 4px 8px; white-space: nowrap; }
   .code { letter-spacing: 3px; color: var(--gold); font-weight: bold; font-size: 1rem; }
@@ -91,23 +93,25 @@
 
   .playarea { flex: 1; min-height: 0; display: grid; gap: 6px;
               grid-template-columns: 1fr 330px; grid-template-rows: 1fr; grid-template-areas: "stage side"; }
-  .stage { grid-area: stage; position: relative; min-height: 0; min-width: 0; background: #120f0c; border-radius: 10px; border: 2px solid #0c0a08; }
+  .stage { grid-area: stage; position: relative; min-height: 0; min-width: 0; background: #2e2236; border-radius: 8px; border: 2px solid #f4ecd0;
+            box-shadow: inset 0 0 0 2px #141c48; overflow: hidden; }
   #mine { display: block; width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; touch-action: none; cursor: pointer; }
   .toast { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); max-width: 92%; text-align: center;
-           background: #120f0cdd; border: 2px solid var(--line); border-radius: 10px; padding: 6px 12px; font-size: .9rem;
+           background: linear-gradient(180deg, #4a62b8, #22307a); border: 2px solid var(--line); border-radius: 6px; padding: 6px 12px; font-size: .9rem;
+           box-shadow: inset 0 0 0 2px #141c48;
            transition: opacity .5s; pointer-events: none; }
-  .toast.good { color: var(--good); border-color: #3d6b37; } .toast.bad { color: var(--bad); border-color: #7a3a33; }
+  .toast.good { color: var(--good); } .toast.bad { color: var(--bad); }
   .toast.fade { opacity: 0; }
 
   .menu { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(520px, 94%); max-height: 92%;
-          overflow-y: auto; background: #1d1813; border: 3px solid #6b4a2e; border-radius: 12px; padding: 10px 12px; z-index: 5;
-          box-shadow: 0 10px 30px #000a; }
+          overflow-y: auto; background: linear-gradient(180deg, #4a62b8 0%, #2a3a8a 50%, #22307a 100%); border: 3px solid #f4ecd0;
+          border-radius: 8px; padding: 10px 12px; z-index: 5; box-shadow: inset 0 0 0 2px #141c48, 0 10px 30px #000a; }
   .menu-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
   .menu-head h3 { margin: 0; color: var(--gold); font-size: 1.15rem; }
   .menu-head button { font-size: .8rem; padding: 4px 9px; }
   .menu-note { font-size: .8rem; color: var(--muted); margin: 4px 0 8px; }
   .menu-note.turn { color: var(--gold); }
-  .mrow { display: flex; align-items: center; gap: 10px; background: var(--panel2); border-radius: 9px; padding: 7px 9px; margin-bottom: 6px; }
+  .mrow { display: flex; align-items: center; gap: 10px; background: var(--panel2); border: 1px solid #8a9ee0; border-radius: 6px; padding: 7px 9px; margin-bottom: 6px; }
   .mrow.dim { opacity: .55; }
   .mrow .ic { font-size: 1.5rem; width: 34px; text-align: center; flex: none; }
   .mrow .bar-ic { width: 26px; height: 14px; border-radius: 3px; border: 2px solid #120f0c; margin: 0 4px; flex: none;
@@ -160,7 +164,7 @@
   /* Narrow screens / touch: stats panel becomes a pop-over, touch controls appear */
   @media (max-width: 999px), (hover: none) {
     .playarea { grid-template-columns: 1fr; grid-template-areas: "stage"; }
-    .side { position: fixed; inset: 8px; z-index: 20; background: var(--bg); border: 2px solid var(--line); border-radius: 12px;
+    .side { position: fixed; inset: 8px; z-index: 20; background: #1a1838; border: 2px solid var(--line); border-radius: 8px;
             padding: 10px; display: none; }
     .side.open { display: flex; }
     .side-head { display: flex; }
@@ -761,8 +765,8 @@ const LOOKS = {
   hairStyle: ["Short", "Long", "Spiky", "Bald"],
   hairColor: [["#2a221c", "Black"], ["#5a3a22", "Brown"], ["#8a3b1e", "Auburn"], ["#e3c16f", "Blonde"], ["#d86a2b", "Ginger"], ["#b8b2a8", "Gray"], ["#4f7bd6", "Blue"], ["#e07aa8", "Pink"]],
   hatStyle:  ["Helmet", "Cap", "Beanie", "Cowboy", "None"],
-  hatColor:  [["#e8b730", "Yellow"], ["#d6453a", "Red"], ["#4caf50", "Green"], ["#3d7fd1", "Blue"], ["#e8e4dc", "White"], ["#2e2a28", "Black"], ["#9a5bd6", "Purple"], ["#a0703c", "Leather"]],
-  shirt:     [["#3d7fd1", "Blue"], ["#d9772f", "Orange"], ["#d6453a", "Red"], ["#4caf50", "Green"], ["#9a5bd6", "Purple"], ["#e8e4dc", "White"], ["#2e2a28", "Black"], ["#e0c03a", "Yellow"]],
+  hatColor:  [["#f2c43a", "Yellow"], ["#e8483e", "Red"], ["#4cbf58", "Green"], ["#4a8ee8", "Blue"], ["#f4efe2", "White"], ["#3a3448", "Black"], ["#a866e8", "Purple"], ["#b07a44", "Leather"]],
+  shirt:     [["#4a8ee8", "Blue"], ["#f08a3a", "Orange"], ["#e8483e", "Red"], ["#4cbf58", "Green"], ["#a866e8", "Purple"], ["#f4efe2", "White"], ["#3a3448", "Black"], ["#f2cf3a", "Yellow"]],
   pants:     [["#3b4a6b", "Navy"], ["#4b6fa5", "Denim"], ["#6b4a2e", "Brown"], ["#2a2a2e", "Black"], ["#3f6b3a", "Green"], ["#77736e", "Gray"], ["#8f2f2a", "Red"]],
   shoes:     [["#5a3a22", "Brown"], ["#1f1c1a", "Black"], ["#e8e4dc", "White"], ["#c23a30", "Red"], ["#3d6fb8", "Blue"], ["#b58a55", "Tan"]],
 };
@@ -913,11 +917,11 @@ function lookPalette(look) {
   const c = (k) => LOOKS[k][look[k]][0];
   return {
     K: "#2a1814", E: "#2a1c30", L: "#fff6c0",
-    S: c("skin"), s: shade(c("skin"), 0.8), p: blush(c("skin")),
-    R: c("hairColor"), r: shade(c("hairColor"), 0.75), h: shade(c("hairColor"), 1.4),
-    Y: c("hatColor"), y: shade(c("hatColor"), 0.72),
-    C: c("shirt"), c: shade(c("shirt"), 0.72),
-    O: c("pants"), o: shade(c("pants"), 0.75),
+    S: c("skin"), s: ramp(c("skin"), -1), p: blush(c("skin")),
+    R: c("hairColor"), r: ramp(c("hairColor"), -1), h: ramp(c("hairColor"), 2),
+    Y: c("hatColor"), y: ramp(c("hatColor"), -1),
+    C: c("shirt"), c: ramp(c("shirt"), -1),
+    O: c("pants"), o: ramp(c("pants"), -1),
     B: c("shoes"), M: "#9a4a46", W: "#f4f0e8",
   };
 }
@@ -1024,7 +1028,44 @@ const shadeOf = (hex, f) => shadeCache[hex + f] || (shadeCache[hex + f] = hex.st
 // pixel is a deep shade of the colour it wraps, not flat black), soft 3-tone shading lit from
 // the top-left, and glossy eyes with a highlight.
 const rgbOf = c => c.startsWith("#") ? [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16)) : c.match(/\d+/g).slice(0, 3).map(Number);
-const OUTLINE_INK = [42, 24, 20];
+const OUTLINE_INK = [34, 20, 40];
+// Hue-shifted ramps (the heart of the handheld tactics-RPG look): highlights warm toward
+// yellow, shadows cool toward blue-violet and gain saturation — even greys get bluish shadows.
+function rgb2hsl([r, g, b]) {
+  r /= 255; g /= 255; b /= 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2;
+  let h = 0, s = 0;
+  if (mx !== mn) {
+    const d = mx - mn; s = l > .5 ? d / (2 - mx - mn) : d / (mx + mn);
+    h = (mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4) * 60;
+  }
+  return [h, s, l];
+}
+function hsl2rgb(h, s, l) {
+  const k = n => (n + h / 30) % 12, a = s * Math.min(l, 1 - l);
+  const f = n => l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1));
+  return [f(0), f(8), f(4)].map(v => Math.round(Math.max(0, Math.min(1, v)) * 255));
+}
+function towardHue(h, target, deg) {
+  let d = ((target - h + 540) % 360) - 180;
+  return (h + Math.sign(d) * Math.min(Math.abs(d), deg) + 360) % 360;
+}
+const rampCache = {};
+function ramp(c, step) {
+  const key = c + step;
+  if (rampCache[key]) return rampCache[key];
+  let [h, s, l] = rgb2hsl(rgbOf(c));
+  const grey = s < 0.1;
+  if (step > 0) { l += 0.085 * step; s = Math.max(0, s - 0.02 * step); if (!grey) h = towardHue(h, 55, 7 * step); }
+  else if (step < 0) {
+    const k = -step;
+    l -= 0.1 * k; s = Math.min(1, s + 0.07 * k + (grey ? 0.07 * k : 0));
+    h = grey ? 235 : towardHue(h, 255, 7 * k);
+  }
+  l = Math.max(0.04, Math.min(0.97, l));
+  const [r, g, b] = hsl2rgb(h, s, l);
+  return (rampCache[key] = `rgb(${r},${g},${b})`);
+}
 function seloutColor(base, f, t = 0.4) {
   const [r, g, b] = rgbOf(base);
   const mix = (v, k) => Math.round(v * f * (1 - t) + OUTLINE_INK[k] * t);
@@ -1049,18 +1090,18 @@ function paint(rows, pal, opts = {}) {
         .map(([dx, dy]) => ({ c: at(x + dx, y + dy), dx, dy })).find(n => fill(n.c) && n.c !== "E");
       if (below && !opts.rawOutline) {
         const lit = below.dy > 0 || below.dx > 0;      // fill is below/right → this is a top/left edge
-        col = seloutColor(pal[below.c], lit ? 0.62 : 0.42, lit ? 0.3 : 0.45);
+        col = seloutColor(ramp(pal[below.c], lit ? -2 : -3), 1, lit ? 0.2 : 0.35);
       }
     } else if (ch === "E") {
       // glossy eyes: highlight on the top-left pixel of each eye
       if (at(x, y - 1) !== "E" && at(x - 1, y) !== "E") col = "#fff6e6";
       else if (at(x, y + 1) !== "E") col = "#4a3a6a";
     } else if (!OPAQUE_NO_SHADE.has(ch)) {
-      let f = 1;
-      if (edge(at(x, y - 1)) || edge(at(x - 1, y))) f = 1.16;
-      else if (edge(at(x, y + 1)) || edge(at(x + 1, y))) f = 0.76;
-      else if (edge(at(x, y + 2)) || edge(at(x + 2, y))) f = 0.88;
-      if (f !== 1) col = shadeOf(pal[ch], f);
+      let st = 0;
+      if (edge(at(x, y - 1)) || edge(at(x - 1, y))) st = 1;
+      else if (edge(at(x, y + 1)) || edge(at(x + 1, y))) st = -2;
+      else if (edge(at(x, y + 2)) || edge(at(x + 2, y))) st = -1;
+      if (st) col = ramp(pal[ch], st);
     }
     ctx2.fillStyle = col;
     ctx2.fillRect(x * HD_PX, y * HD_PX, HD_PX, HD_PX);
@@ -1100,15 +1141,46 @@ function pickSprite(tier, pose) {
   return (pickCache[key] = paint(rows, { M: PICKAXES[tier].color, K: "#1a1410", P: "#7a4a22" }));
 }
 
+// Ore nodes: chunky rock piles studded with ore (levels 1–6) or crystal clusters (7–10).
+// They visibly shrink as they're cracked (stage 0 → 2), like depleting resource nodes.
+function oreNodeGrid(level, stage) {
+  const g = newGrid(), crystal = level >= 7;
+  const piles = [
+    [[16, 22, 10, 7], [9, 25, 6, 4.5], [23, 25, 6, 4.5], [16, 27, 8, 3.5]],
+    [[15, 24, 9, 6], [23, 26, 5, 4], [14, 27.5, 7, 3]],
+    [[16, 26, 7.5, 4.5], [11, 28, 4, 2.5]],
+  ][stage];
+  piles.forEach(([cx, cy, rx, ry]) => ell(g, cx, cy, rx, ry, "G"));
+  // crevices for a chunky, faceted look
+  for (const [x, y, len] of [[12, 21, 4], [19, 23, 3], [8, 26, 3], [21, 27, 3]].slice(0, 4 - stage)) rect(g, x, y, x + len - 1, y, "g");
+  if (!crystal) {
+    const spots = [[12, 18], [18, 17], [21, 22], [9, 24], [15, 23], [25, 25], [13, 27]].slice(0, [7, 4, 2][stage]);
+    for (const [x, y] of spots) { rect(g, x, y + stage, x + 2, y + 1 + stage, "O"); put(g, x, y + stage, "o"); put(g, x + 2, y + 1 + stage, "q"); }
+  } else {
+    const shards = [{ x: 16, h: 15, w: 6 }, { x: 10, h: 10, w: 4 }, { x: 22, h: 11, w: 4 }, { x: 6, h: 6, w: 3 }, { x: 26, h: 6, w: 3 }]
+      .slice(0, [5, 3, 1][stage]);
+    const base = 21 + stage * 2;
+    for (const sh of shards) {
+      const hgt = sh.h - stage * 2;
+      for (let r = 0; r < hgt; r++) {
+        const taper = r > hgt - 4 ? (hgt - r) / 4 : 1, half = Math.max(0.5, (sh.w / 2) * taper);
+        for (let x = Math.round(sh.x - half); x <= Math.round(sh.x + half) - 1; x++)
+          put(g, x, base - r, x < sh.x - 1 ? "o" : x < sh.x ? "O" : "q");
+      }
+      put(g, sh.x - 1, base - hgt + 2, "W");
+    }
+    ell(g, 16, base + 4, 9 - stage, 3, "G");                       // rock lip in front of the crystals
+  }
+  return g.map(r => r.join(""));
+}
 const rockCache = {};
 function rockSprite(level, cracks) {
   const key = level + ":" + cracks;
   if (rockCache[key]) return rockCache[key];
   const ore = ROCKS[level - 1].color;
-  const c = paint(ROCK_MAP, { K: "#1a1410", G: "#6f6a64", g: "#4e4a46", l: "#8e8880", O: ore, o: shade(ore, 1.35) });
-  const g = c.getContext("2d");
-  for (let i = 0; i < cracks; i++) g.drawImage(paint(CRACKS[i], { K: "#15110e" }, { rawOutline: true }), 0, 4 * (1 << UPSCALE_PASSES) * HD_PX);
-  return (rockCache[key] = c);
+  const stone = level === 2 ? "#5e5a66" : level >= 7 ? "#8a7f8e" : "#9a8a78";
+  const pal = { K: "#22182a", G: stone, g: ramp(stone, -2), O: ore, o: ramp(ore, 2), q: ramp(ore, -2), W: "#ffffff" };
+  return (rockCache[key] = paint(oreNodeGrid(level, Math.min(2, cracks)), pal, { passes: 0 }));
 }
 
 // ================= Room rendering =================
@@ -1175,144 +1247,145 @@ const backgrounds = {
     const inside = ROOMS.mine.inside;
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const X = x * TS, Y = y * TS;
-      if (inside(x, y)) {
-        px(X, Y, 32, 32, ["#3a2f25", "#3d3127", "#372c23"][ri(3)]);
-        for (let i = 0; i < 16; i++) px(X + ri(31) * h, Y + ri(31) * h, 1, 1, rnd() < .5 ? "#2c231b" : "#4a3c2f");
-        for (let i = 0; i < 2; i++) {
-          const bx = X + ri(28) * h, by = Y + ri(29) * h;
-          px(bx, by, 3, 2, "#4f4134"); px(bx, by, 2, 1, "#655444"); px(bx + h, by + 2 * h, 3, 1, "#251d16");
+      if (inside(x, y)) {                                   // warm earthen cave floor
+        const base = ["#a8805a", "#a27a54", "#ae8660"][ri(3)];
+        px(X, Y, 32, 32, base);
+        if (rnd() < .5) { const bx = ri(20), by = ri(22); px(X + bx * h, Y + by * h, 10 + ri(4), 6 + ri(3), ramp(base, 1)); px(X + bx * h, Y + (by + 6) * h, 10, 1, ramp(base, -1)); }
+        for (let i = 0; i < 7; i++) px(X + ri(31) * h, Y + ri(31) * h, 1, 1, rnd() < .5 ? ramp(base, -2) : ramp(base, 2));
+        for (let i = 0; i < 2; i++) {                       // pebbles with cool shadows
+          const bx = X + ri(27) * h, by = Y + ri(28) * h, c = ["#9a92a0", "#b0a090"][ri(2)];
+          px(bx, by + 2 * h, 4, 1, ramp(base, -3)); px(bx, by, 4, 2, c); px(bx, by, 2, 1, ramp(c, 2)); px(bx + 3 * h, by + h, 1, 1, ramp(c, -2));
         }
-        if (y === 2) { px(X, Y, 32, 4, "#00000055"); px(X, Y, 32, 2, "#00000044"); }
-      } else if (y <= 1 && x >= 1 && x <= W - 2) {
-        px(X, Y, 32, 32, y === 0 ? "#463b32" : "#5b4e43");
+        if (rnd() < .18) {                                  // little tufts of cave moss
+          const bx = X + ri(26) * h, by = Y + ri(26) * h;
+          px(bx, by + 2 * h, 5, 1, "#3e7a3a"); px(bx + h, by, 1, 2, "#5aae48"); px(bx + 3 * h, by + h, 1, 1, "#7ad060"); px(bx + 2 * h, by + h, 1, 1, "#5aae48");
+        }
+        if (rnd() < .07) {                                  // a glinting crystal shard
+          const bx = X + ri(26) * h, by = Y + ri(26) * h;
+          px(bx, by, 2, 4, "#7ad8ff"); px(bx, by, 1, 2, "#e8fbff"); px(bx + 2 * h, by + 2 * h, 1, 2, "#4aa0e0"); px(bx - h, by + 4 * h, 4, 1, ramp(base, -3));
+        }
+
+        if (y === 2) { px(X, Y, 32, 5, "rgba(50,20,60,0.35)"); px(X, Y, 32, 2, "rgba(50,20,60,0.25)"); }
+      } else if (y <= 1 && x >= 1 && x <= W - 2) {          // lit rock wall made of blocks
+        px(X, Y, 32, 32, y === 0 ? "#7a6670" : "#9a8478");
         for (const by of [0, 16]) {
-          px(X, Y + by * h, 32, 1, "#2e2620");
-          px(X, Y + (by + 1) * h, 32, 1, y === 0 ? "#53463b" : "#6b5d50");
-          px(X, Y + (by + 15) * h, 32, 1, y === 0 ? "#3a3029" : "#4a3f36");
+          const off = ((x + y + by / 16) % 2) ? 0 : 16;
+          for (const bx of [off - 16, off]) {
+            const c = ["#a89484", "#a08c7c", "#ac9888"][ri(3)], dark = y === 0;
+            const cc = dark ? ramp(c, -1) : c;
+            px(X + bx * h, Y + by * h, 16, 16, cc);
+            px(X + bx * h, Y + by * h, 16, 2, ramp(cc, 2)); px(X + bx * h, Y + by * h, 2, 16, ramp(cc, 1));
+            px(X + bx * h, Y + (by + 14) * h, 16, 2, ramp(cc, -2)); px(X + (bx + 14) * h, Y + by * h, 2, 16, ramp(cc, -1));
+            px(X + bx * h, Y + by * h, 16, 1, "#4a3a4a"); px(X + bx * h, Y + by * h, 1, 16, "#4a3a4a");
+          }
         }
-        const off = (y + x) % 2 ? 0 : 16;
-        px(X + off * h, Y, 1, 16, "#2e2620"); px(X + ((off + 16) % 32) * h, Y + 16 * h, 1, 16, "#2e2620");
-        for (let i = 0; i < 6; i++) px(X + ri(31) * h, Y + ri(31) * h, 1, 1, "#6a5b4e");
+        if (y === 1) px(X, Y + 30 * h, 32, 2, "#3a2a3a");
       } else {
-        px(X, Y, 32, 32, "#1d1814");
-        for (let i = 0; i < 12; i++) px(X + ri(31) * h, Y + ri(31) * h, 1, 1, rnd() < .7 ? "#2a231d" : "#151210");
+        px(X, Y, 32, 32, "#2e2236");
+        for (let i = 0; i < 10; i++) px(X + ri(31) * h, Y + ri(31) * h, 1, 1, rnd() < .6 ? "#3a2c44" : "#241a2c");
       }
     }
     for (const tx of TORCHES) {
-      px(tx * TS + 14 * h, TS + 12 * h, 4, 12, "#5a3a22"); px(tx * TS + 14 * h, TS + 12 * h, 1, 12, "#7a5232");
-      px(tx * TS + 12 * h, TS + 10 * h, 8, 2, "#3a2414");
+      px(tx * TS + 14 * h, TS + 12 * h, 4, 12, "#6a4024"); px(tx * TS + 14 * h, TS + 12 * h, 1, 12, "#9a6a3a");
+      px(tx * TS + 12 * h, TS + 10 * h, 8, 2, "#4a2a1a");
     }
-    // Shop door in the top wall
-    const d = ROOMS.mine.door, DX = d.x * TS, DY = d.y * TS;
-    px(DX - 2 * h, DY - 6 * h, 36, 38, "#3a2414");                       // frame
-    px(DX, DY - 4 * h, 32, 36, "#120c08");                               // opening
-    px(DX + 2 * h, DY + 2 * h, 28, 30, "#1c130c");
-    px(DX - 2 * h, DY - 6 * h, 36, 2, "#6b4a2e");
-    px(DX + 4 * h, (d.y + 1) * TS + 2 * h, 24, 6, "#7a3b2a"); px(DX + 6 * h, (d.y + 1) * TS + 4 * h, 20, 2, "#a85a3a"); // mat
-    g.fillStyle = "#6b4a2e"; g.fillRect(DX - 18 * h, 2 * h, 68 * h, 12 * h);                  // sign board
-    g.fillStyle = "#3a2414"; g.fillRect(DX - 18 * h, 13 * h, 68 * h, 1 * h);
+    const d = ROOMS.mine.door, DX = d.x * TS, DY = d.y * TS;   // door to the Upgrades room
+    px(DX - 2 * h, DY - 6 * h, 36, 38, "#5a3a24"); px(DX - 2 * h, DY - 6 * h, 36, 2, "#9a6a3a");
+    px(DX, DY - 4 * h, 32, 36, "#2a1a22"); px(DX + 2 * h, DY + 2 * h, 28, 30, "#3a2430");
+    px(DX + 4 * h, (d.y + 1) * TS + 2 * h, 24, 6, "#b84a3a"); px(DX + 6 * h, (d.y + 1) * TS + 4 * h, 20, 2, "#e87a5a");
+    g.fillStyle = "#8a5a34"; g.fillRect(DX - 18 * h, 2 * h, 68 * h, 12 * h);
+    g.fillStyle = "#b07a44"; g.fillRect(DX - 18 * h, 2 * h, 68 * h, 2 * h);
+    g.fillStyle = "#4a2a1a"; g.fillRect(DX - 18 * h, 13 * h, 68 * h, 1 * h);
     g.font = `bold ${9 * h}px "Trebuchet MS", sans-serif`; g.textAlign = "center"; g.textBaseline = "middle";
-    g.fillStyle = "#ffe08a"; g.fillText("UPGRADES", DX + 16 * h, 8.5 * h);
+    g.fillStyle = "#3a1e10"; g.fillText("UPGRADES", DX + 16 * h + h / 2, 9 * h);
+    g.fillStyle = "#fff0b0"; g.fillText("UPGRADES", DX + 16 * h, 8.5 * h);
   }),
   upgrades: makeBg((g, px, h, ri, rnd) => {
     const inside = ROOMS.upgrades.inside;
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const X = x * TS, Y = y * TS;
-      if (inside(x, y)) {                         // wooden planks
+      if (inside(x, y)) {                                   // honey-coloured planks
         for (const py of [0, 16]) {
-          const base = ["#8a5a32", "#80532e", "#925f36"][ri(3)];
+          const base = ["#d0985a", "#c88f52", "#d8a262"][ri(3)];
           px(X, Y + py * h, 32, 16, base);
-          px(X, Y + py * h, 32, 1, "#a06c40"); px(X, Y + (py + 15) * h, 32, 1, "#5e3b1f");
-          px(X + ((x + py / 16) % 2 ? 10 : 24) * h, Y + py * h, 1, 16, "#5e3b1f");
-          for (let i = 0; i < 4; i++) px(X + ri(31) * h, Y + (py + 2 + ri(12)) * h, 2, 1, "#7a4e2a");
+          px(X, Y + py * h, 32, 2, ramp(base, 1)); px(X, Y + (py + 14) * h, 32, 2, ramp(base, -1));
+          px(X, Y + (py + 15) * h, 32, 1, "#8a5a34");
+          px(X + ((x + py / 16) % 2 ? 10 : 24) * h, Y + py * h, 1, 16, "#8a5a34");
+          for (let i = 0; i < 3; i++) px(X + ri(28) * h, Y + (py + 4 + ri(8)) * h, 3 + ri(3), 1, ramp(base, -1));
+          if (rnd() < .3) px(X + ri(30) * h, Y + (py + 7) * h, 1, 1, "#6a4024");
         }
-        if (y === 3) px(X, Y, 32, 3, "#00000055");
-      } else if (y >= 0 && y <= 2 && x >= 2 && x <= 17) {   // back wall with shelves
-        px(X, Y, 32, 32, "#5a3b24");
-        for (let i = 0; i < 4; i++) px(X + i * 8 * h, Y, 1, 32, "#452c1a");
+        if (y === 3) px(X, Y, 32, 4, "rgba(60,20,40,0.3)");
+      } else if (y >= 0 && y <= 2 && x >= 2 && x <= 17) {  // plaster wall with timber beams & shelf
+        px(X, Y, 32, 32, y === 2 ? "#d8bc8e" : "#ecd6aa");
+        for (let i = 0; i < 6; i++) px(X + ri(30) * h, Y + ri(30) * h, 2, 1, "#d4b888");
+        if (x % 3 === 2) { px(X + 12 * h, Y, 6, 32, "#8a5a34"); px(X + 12 * h, Y, 2, 32, "#b07a44"); px(X + 17 * h, Y, 1, 32, "#5a3420"); }
+        if (y === 0) { px(X, Y + 26 * h, 32, 6, "#8a5a34"); px(X, Y + 26 * h, 32, 2, "#b07a44"); }
         if (y === 1) {
-          px(X, Y + 18 * h, 32, 3, "#3a2414"); px(X, Y + 18 * h, 32, 1, "#7a5232");
-          for (let i = 0; i < 3; i++) {             // bottles & jars
-            const col = ["#3fdc7a", "#ff3355", "#8ff0ff", "#ffd23f", "#b98bff"][ri(5)];
+          px(X, Y + 20 * h, 32, 3, "#8a5a34"); px(X, Y + 20 * h, 32, 1, "#c08a50"); px(X, Y + 23 * h, 32, 1, "#5a3420");
+          for (let i = 0; i < 3; i++) {
+            const col = ["#4ce07a", "#ff4a6a", "#5ac8ff", "#ffd23f", "#b98bff"][ri(5)];
             const bx = X + (3 + i * 10) * h;
-            px(bx, Y + 8 * h, 5, 10, "#1a1410"); px(bx + h, Y + 9 * h, 3, 9, col); px(bx + h, Y + 9 * h, 1, 4, "#ffffff88");
-            px(bx + h, Y + 5 * h, 3, 3, "#1a1410"); px(bx + 2 * h, Y + 6 * h, 1, 2, "#c9a46a");
+            px(bx, Y + 9 * h, 5, 11, "#3a2030"); px(bx + h, Y + 10 * h, 3, 10, col); px(bx + h, Y + 10 * h, 1, 5, ramp(col, 2));
+            px(bx + 3 * h, Y + 12 * h, 1, 8, ramp(col, -2)); px(bx + h, Y + 6 * h, 3, 3, "#3a2030"); px(bx + 2 * h, Y + 7 * h, 1, 2, "#e0c08a");
           }
         }
-        if (y === 2) px(X, Y + 26 * h, 32, 6, "#3a2414");
+        if (y === 2) { px(X, Y + 26 * h, 32, 6, "#8a5a34"); px(X, Y + 26 * h, 32, 1, "#c08a50"); }
       } else if ((x === 2 || x === 17) && y >= 3 && y <= 10) {
-        px(X, Y, 32, 32, "#4a3020"); px(x === 2 ? X + 28 * h : X, Y, 4, 32, "#2e1d12");
+        px(X, Y, 32, 32, "#8a5a34"); px(x === 2 ? X + 26 * h : X, Y, 6, 32, "#5a3420"); px(x === 2 ? X + 26 * h : X + 5 * h, Y, 1, 32, "#b07a44");
       } else if (y === 10 && x >= 2 && x <= 17) {
-        px(X, Y, 32, 32, "#4a3020"); px(X, Y, 32, 4, "#2e1d12");
+        px(X, Y, 32, 32, "#8a5a34"); px(X, Y, 32, 3, "#5a3420");
       } else {
-        px(X, Y, 32, 32, "#120f0c");
+        px(X, Y, 32, 32, "#2e2236");
       }
     }
-    // exit door (bottom) with rug
     const d = ROOMS.upgrades.door, DX = d.x * TS, DY = d.y * TS;
-    px(DX, DY, 32, 32, "#120c08"); px(DX - 2 * h, DY, 2, 32, "#6b4a2e"); px(DX + 32 * h, DY, 2, 32, "#6b4a2e");
-    px(DX + 2 * h, DY - 10 * h, 28, 8, "#7a2f3a"); px(DX + 4 * h, DY - 8 * h, 24, 4, "#a8475a");
+    px(DX, DY, 32, 32, "#2a1a22"); px(DX - 2 * h, DY, 2, 32, "#b07a44"); px(DX + 32 * h, DY, 2, 32, "#b07a44");
+    px(DX + 2 * h, DY - 10 * h, 28, 8, "#b84a5a"); px(DX + 4 * h, DY - 8 * h, 24, 4, "#e87a8a"); px(DX + 6 * h, DY - 7 * h, 20, 1, "#ffd0a0");
     g.font = `bold ${8 * h}px "Trebuchet MS", sans-serif`; g.textAlign = "center"; g.textBaseline = "middle";
-    g.fillStyle = "#c9b79a"; g.fillText("▼ MINE", DX + 16 * h, DY + 20 * h);
+    g.fillStyle = "#fff0b0"; g.fillText("▼ MINE", DX + 16 * h, DY + 20 * h);
   }),
 };
 
-// Station sprites (authored 16x16, upscaled like everything else)
+// Station sprites, drawn natively on the 32x32 grid
+function anvilGrid() {
+  const g = newGrid();
+  ell(g, 16, 27, 8, 3, "w"); rect(g, 9, 20, 22, 27, "W"); ell(g, 16, 20, 7, 2, "w");          // tree-stump base
+  for (const x of [11, 15, 19]) rect(g, x, 22, x, 26, "w");
+  rect(g, 11, 17, 21, 19, "M");                                                              // foot
+  rect(g, 13, 13, 19, 16, "m");                                                              // waist
+  rect(g, 8, 9, 25, 12, "M"); rect(g, 8, 9, 25, 9, "H");                                    // face
+  for (let i = 0; i < 6; i++) rect(g, 2 + i, 10 - (i > 3 ? 1 : 0), 7, 11 - (i < 2 ? 0 : 0), "M");   // horn
+  rect(g, 1, 10, 2, 10, "M"); rect(g, 25, 9, 27, 11, "M");                                    // horn tip & heel
+  return g.map(r => r.join(""));
+}
+function forgeGrid() {
+  const g = newGrid();
+  rect(g, 12, 1, 19, 8, "G"); rect(g, 11, 1, 20, 2, "g");                                   // chimney
+  rect(g, 5, 8, 26, 29, "G"); rect(g, 4, 8, 27, 10, "g");                                   // furnace body & ledge
+  for (let y = 12; y <= 28; y += 4) { rect(g, 6, y, 25, y, "g"); for (let x = (y % 8 ? 9 : 13); x <= 24; x += 8) rect(g, x, y - 3, x, y - 1, "g"); }
+  ell(g, 16, 18, 7, 6, "K", (x, y) => y <= 18); rect(g, 9, 18, 22, 25, "K");                // arched mouth
+  ell(g, 16, 19, 6, 5, "F", (x, y) => y <= 19); rect(g, 10, 19, 21, 25, "F");              // fire
+  ell(g, 16, 22, 4.5, 3.5, "O"); ell(g, 16, 23, 2.5, 2, "Y");
+  rect(g, 8, 26, 23, 27, "g");
+  return g.map(r => r.join(""));
+}
+function cartGrid() {
+  const g = newGrid();
+  rect(g, 7, 8, 13, 15, "Y"); rect(g, 7, 11, 13, 11, "y"); rect(g, 10, 8, 10, 15, "y");     // crate
+  ell(g, 19, 12, 4.5, 4.5, "A"); rect(g, 17, 7, 21, 8, "a");                                 // sack
+  ell(g, 25, 13, 2.6, 2.6, "R"); ell(g, 23, 14.5, 1.8, 1.8, "B");                           // gems
+  rect(g, 4, 15, 27, 23, "W");                                                               // cart box
+  for (const y of [18, 21]) rect(g, 5, y, 26, y, "w");
+  rect(g, 4, 15, 27, 15, "k"); rect(g, 4, 23, 27, 23, "k");
+  rect(g, 27, 18, 31, 19, "k");                                                              // handle
+  for (const cx of [9, 22]) { ell(g, cx, 26, 4, 4, "D"); ell(g, cx, 26, 1.6, 1.6, "d"); }  // wheels
+  return g.map(r => r.join(""));
+}
 const STATION_ART = {
-  cart: paint([
-    "................",
-    "....KYYK.KRRK...",
-    "...KYYYYKRRRRK..",
-    "...KYyYYKRrRRK.G",
-    "..kkkkkkkkkkkkkG",
-    "..kWWWWWWWWWWkk.",
-    "..kWwWWwWWwWWk..",
-    "..kWWWWWWWWWWk..",
-    "..kwwwwwwwwwwk..",
-    "..kkkkkkkkkkkkk.",
-    "...kDk....kDk...",
-    "..KDdDK..KDdDK..",
-    "..KDDDK..KDDDK..",
-    "...KKK....KKK...",
-    "................",
-    "................",
-  ], { K: "#1a1410", k: "#4a2c16", W: "#a06c40", w: "#7a4e2a", Y: "#e8b060", y: "#c98a3e", R: "#3fdc7a", r: "#1f7a3e", G: "#ffd23f", D: "#5a5550", d: "#8e8880" }),
-  forge: paint([
-    ".....KKKKKK.....",
-    ".....KGGGGK.....",
-    ".....KGgGGK.....",
-    "...KKKGGGGKKK...",
-    "..KGGGGGGGGGGK..",
-    "..KGgGGGGGGgGK..",
-    "..KGGKKKKKKGGK..",
-    "..KGKFFFFFFKGK..",
-    "..KGKFOOOOFKGK..",
-    "..KGKFOYYOFKGK..",
-    "..KGKKKKKKKKGK..",
-    "..KGGGGgGGGGGK..",
-    "..KggggggggggK..",
-    "..KKKKKKKKKKKK..",
-    "................",
-    "................",
-  ], { K: "#1a1410", G: "#6f6a64", g: "#4e4a46", F: "#b8401a", O: "#ff8a1e", Y: "#ffe08a" }),
-  anvil: paint([
-    "................",
-    "................",
-    "................",
-    "................",
-    "...KKKKKKKKKK...",
-    "..KMMMMMMMMMMKKK",
-    "..KmmmmmmmmmmmmK",
-    "...KKKmmmmmKKKK.",
-    ".....KmmmmK.....",
-    ".....KmmmmK.....",
-    "....KMMMMMMK....",
-    "...KWWWWWWWWK...",
-    "...KwWWWWWWwK...",
-    "...KwwwwwwwwK...",
-    "...KKKKKKKKKK...",
-    "................",
-  ], { K: "#1a1410", M: "#8a8f99", m: "#5c6069", W: "#7a4e2a", w: "#5a3a1a" }),
+  anvil: paint(anvilGrid(), { K: "#22182a", M: "#7e8aa0", m: "#5a627a", H: "#c8d4e8", W: "#b07a44", w: "#8a5a32" }, { passes: 0 }),
+  forge: paint(forgeGrid(), { K: "#2a1418", G: "#b09888", g: "#7e6a66", F: "#e0502a", O: "#ff9a2a", Y: "#fff0a0" }, { passes: 0 }),
+  cart:  paint(cartGrid(),  { K: "#22182a", W: "#c88a4a", w: "#9a6236", k: "#6a4024", Y: "#e8b468", y: "#b8844a",
+                              A: "#e8d4a0", a: "#b89a60", R: "#4ce07a", B: "#5ac8ff", D: "#6e6a78", d: "#c8c4d4" }, { passes: 0 }),
 };
 
 // Client-only visual state
@@ -1360,7 +1433,7 @@ function drawLabel(text, x, y, color, size = 15) {
   size = Math.round(size * ui);
   ctx.font = `bold ${size}px "Trebuchet MS", sans-serif`;
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.lineWidth = 4; ctx.strokeStyle = "#120f0c"; ctx.strokeText(text, x, y);
+  ctx.lineWidth = 4; ctx.strokeStyle = "#1a1640"; ctx.strokeText(text, x, y);
   ctx.fillStyle = color; ctx.fillText(text, x, y);
 }
 
@@ -1373,9 +1446,9 @@ function drawRock(r, now) {
   if (!rockBorn[r.id]) rockBorn[r.id] = now;
   const age = Math.min(1, (now - rockBorn[r.id]) / 350);
   const img = rockSprite(r.level, r.cracks || 0);
-  const sc = 0.4 + 0.6 * age, w = TS * sc;
+  const sc = (0.4 + 0.6 * age) * 1.25, w = TS * sc;
   ctx.globalAlpha = age;
-  ctx.drawImage(img, r.x * TS + (TS - w) / 2, r.y * TS + (TS - w), w, w);
+  ctx.drawImage(img, r.x * TS + (TS - w) / 2, r.y * TS + TS - w + 2, w, w);
   ctx.globalAlpha = 1;
   const me = state.players[net.seat], ok = !lockReason(me, r.level);
   const rad = 9 * Math.min(ui, 1.4), bx = r.x * TS + TS - rad, by = r.y * TS + TS - rad;
@@ -1388,7 +1461,7 @@ function drawRock(r, now) {
 function drawStation(st, now) {
   const X = st.x * TS, Y = st.y * TS;
   ctx.fillStyle = "#00000055"; ctx.beginPath(); ctx.ellipse(X + TS / 2, Y + TS - 4, 22, 6, 0, 0, Math.PI * 2); ctx.fill();
-  const big = 1.3, w = TS * big;
+  const big = 1.6, w = TS * big;
   drawSprite(STATION_ART[st.id], X + (TS - w) / 2, Y + TS - w, w, w);
   if (st.id === "forge") {                                   // flickering fire glow
     const f = Math.random();
@@ -1438,10 +1511,10 @@ function drawTooltip() {
   if (f.kind === "rock") {
     const rock = f.rock, info = ROCKS[rock.level - 1], lock = lockReason(me, rock.level);
     lines = [
-      [`${info.name} · Lvl ${rock.level}${rock.cracks ? " · cracked" : ""}`, "#f1e6d3"],
-      lock ? ["🔒 " + lock, "#e0675a"]
-           : [`${Math.round(successChance(me, rock) * 100)}% success · ${info.value}🪙${me.dynamite ? " · 🧨" : me.charm ? " · 🍀" : ""}`, "#7bc96f"],
-      lock ? null : myTurn ? [`${act} to mine`, "#f2c14e"] : ["Wait for your turn", "#a8977c"],
+      [`${info.name} · Lvl ${rock.level}${rock.cracks ? " · cracked" : ""}`, "#ffffff"],
+      lock ? ["🔒 " + lock, "#ff9a8a"]
+           : [`${Math.round(successChance(me, rock) * 100)}% success · ${info.value}🪙${me.dynamite ? " · 🧨" : me.charm ? " · 🍀" : ""}`, "#9af08a"],
+      lock ? null : myTurn ? [`${act} to mine`, "#ffe070"] : ["Wait for your turn", "#c8d4ff"],
     ];
     tx = rock.x; ty = rock.y; border = info.color;
   } else {
@@ -1450,7 +1523,7 @@ function drawTooltip() {
     if (st.id === "anvil") { const c = craftCost(me); info = c ? `Next: ${PICKAXES[c.tier].name} Pickaxe — ${c.have}/${c.need} ${c.bar}s` : "Your pickaxe is maxed out!"; }
     if (st.id === "forge") info = "2 ore + 1 Coal → 1 bar";
     if (st.id === "cart") info = "Charms, dynamite, lunch & coal";
-    lines = [[st.name, "#f1e6d3"], [info, "#c9b79a"], [`${act} to ${st.verb}`, "#f2c14e"]];
+    lines = [[st.name, "#ffffff"], [info, "#c8d4ff"], [`${act} to ${st.verb}`, "#ffe070"]];
     tx = st.x; ty = st.y; border = "#f2c14e";
   }
   lines = lines.filter(Boolean);
@@ -1460,9 +1533,13 @@ function drawTooltip() {
   let x = (tx + .5) * TS - w / 2, y = ty * TS - h - 8;
   x = Math.max(view.x + 4, Math.min(view.x + view.w - w - 4, x));
   if (y < view.y + 4) y = (ty + 1) * TS + 14 * Math.min(ui, 1.3);
-  roundRect(x, y, w, h, 7); ctx.fillStyle = "#120f0cdd"; ctx.fill(); ctx.strokeStyle = border; ctx.lineWidth = 2; ctx.stroke();
+  const grad = ctx.createLinearGradient(0, y, 0, y + h);
+  grad.addColorStop(0, "#4a62b8"); grad.addColorStop(1, "#22307a");
+  roundRect(x, y, w, h, 5); ctx.fillStyle = grad; ctx.fill();
+  ctx.strokeStyle = "#f4ecd0"; ctx.lineWidth = 2.5; ctx.stroke();
+  roundRect(x + 2.5, y + 2.5, w - 5, h - 5, 3); ctx.strokeStyle = "#141c48"; ctx.lineWidth = 1; ctx.stroke();
   ctx.textAlign = "left"; ctx.textBaseline = "top";
-  lines.forEach((l, i) => { ctx.fillStyle = l[1]; ctx.fillText(l[0], x + 9, y + 7 + i * lh); });
+  lines.forEach((l, i) => { ctx.fillStyle = "#0c1238"; ctx.fillText(l[0], x + 10, y + 8 + i * lh); ctx.fillStyle = l[1]; ctx.fillText(l[0], x + 9, y + 7 + i * lh); });
 }
 
 function frame(now) {
@@ -1483,7 +1560,7 @@ function frame(now) {
     if (room === "mine") {
       for (const tx of TORCHES) {
         const f = Math.random();
-        ctx.fillStyle = "#ff8a1e33"; ctx.beginPath(); ctx.arc(tx * TS + 8 * S, TS + 3 * S, 40 + f * 6, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "rgba(255,180,80,0.22)"; ctx.beginPath(); ctx.arc(tx * TS + 8 * S, TS + 3 * S, 46 + f * 6, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = f < .5 ? "#ffb02e" : "#ff7a1a"; ctx.fillRect(tx * TS + 6 * S, TS + 1 * S, 4 * S, 4 * S);
         ctx.fillStyle = "#fff1a8"; ctx.fillRect(tx * TS + 7 * S, TS + (2 + (f < .3 ? 1 : 0)) * S, 2 * S, 2 * S);
       }
@@ -1717,14 +1794,14 @@ function drawPreviews() {
   const sp = lookSprites(myLook);
   const pc = document.getElementById("preview"), g = pc.getContext("2d");
   g.imageSmoothingEnabled = false;
-  g.fillStyle = "#3a2f25"; g.fillRect(0, 0, pc.width, pc.height);
-  g.fillStyle = "#2c231b"; for (let i = 0; i < 40; i++) g.fillRect((i * 73) % 300, (i * 37) % 130, 3, 3);
+  g.fillStyle = "#a8805a"; g.fillRect(0, 0, pc.width, pc.height);
+  g.fillStyle = "#8a6440"; for (let i = 0; i < 40; i++) g.fillRect((i * 73) % 300, (i * 37) % 130, 3, 3);
   ["down", "right", "up"].forEach((d, i) => {
     g.fillStyle = "#00000055"; g.beginPath(); g.ellipse(54 + i * 96, 112, 30, 8, 0, 0, Math.PI * 2); g.fill();
     g.drawImage(sp[d].stand, 6 + i * 96, 14, 96, 96);
   });
   const mc = document.getElementById("me-preview"), m = mc.getContext("2d");
-  m.imageSmoothingEnabled = false; m.clearRect(0, 0, 48, 48); m.drawImage(sp.down.stand, 0, 0, 48, 48);
+  m.imageSmoothingEnabled = false; m.clearRect(0, 0, 48, 48); m.fillStyle = "#a8805a"; m.fillRect(0, 0, 48, 48); m.drawImage(sp.down.stand, 0, 0, 48, 48);
 }
 
 function showCreator() {
