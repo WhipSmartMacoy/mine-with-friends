@@ -11,19 +11,25 @@ A turn-based online mining game for two players, each on their own device.
 Players connect directly browser-to-browser (via [PeerJS](https://peerjs.com)), so no server or account is needed.
 
 ## How to play
-**Co-op, real time.** There are no turns — both players play at the same time as a team. Gold, ore and bars go into one **team stash** you both spend from.
+**Co-op, real time.** Both players play at the same time as a team. Gold, ore and bars go into one **team stash**.
 
-- **Walk** freely with WASD / arrow keys (diagonals too), or drag the on-screen joystick on phones. **Hold** Space / the action button to keep swinging. Two rooms: the **mine** and the **Upgrades room** (walk through the UPGRADES / MINE doors).
-- **Mine** (mine): face a rock and press **Space** / tap **Mine**. Rocks are levels 1–10; green badges are ones you can mine. Success gives gold, XP and ore. A miss cracks the rock (easier next time) — and **may disturb an enemy**. Enemies also creep in on their own every so often while someone's in the mine.
-- **Fight**: face an enemy and press **Space** / tap **Attack** to strike with your dagger. Enemies get tougher in deeper rock:
-  - 🟢 **Pebble Slime** (levels 1–3) · 🦇 **Cave Bat** (4–6, fast) · 💎 **Crystal Golem** (7–10, tough)
-  - They chase the nearest miner and hit when next to you. Defeating one drops gold for the team and XP for you.
-- **Health**: shown as ❤️ in the top bar. At 0 you're **knocked out** and wake up a few seconds later in the Upgrades room. Health slowly refills while you rest in the Upgrades room.
-- **Upgrades room** (all paid from the team stash):
-  - 🔥 **Forge** — 2 ore + 1 Coal → 1 bar (Stone needs no coal).
-  - ⚒️ **Anvil** — forge your next **pickaxe** or **dagger** from bars of its material (Wooden → Stone → Copper → … → Mythril). Daggers need one bar fewer.
-  - 🛒 **Upgrade Cart** — 🧪 Health Potion, 🥪 Miner's Lunch (full health + XP), 🍀 Lucky Charm, 🧨 Dynamite, 🪨 Sack of Coal.
-- Each player has their own level, health, pickaxe and dagger. The **📊 Stats** panel shows both players, the team stash, milestones and the log.
+### The world
+- The **overworld** is 12 × 12 rooms (each 15 × 15 tiles) joined into one big map — no doors, just walk off the edge of a screen into the next. Grass, trees, lakes, boulders and roads. The **mini-map** (top-right) shows where you and your teammate are.
+- **Home base** (centre): your cottage. You start here, wake up here after being knocked out, and slowly heal while you're home.
+- **Shop** (one room east of home): the 🛒 Upgrade Cart, 🔥 Forge and ⚒️ Anvil stand outdoors.
+- **Mine entrance** (one room west of home): walk into the cave mouth to go down to **depth 1**.
+
+### The mine
+- Each depth is its own level with rocks and enemies. Climb the **ladder** in the top wall to go back up.
+- Mining a rock successfully has a **rare chance to open a tunnel** down to the next depth — 7% at depth 1, getting rarer the deeper you go. Walk into the hole to descend.
+- **Deeper = tougher**: rock levels and enemies scale with depth, and it gets darker.
+- **Mine**: face a rock and press **Space** / tap **Mine**. A miss cracks the rock and may disturb an enemy; enemies also creep in on their own now and then.
+- **Fight**: face an enemy and press **Space** / tap **Attack** (dagger). 🟢 Pebble Slime · 🦇 Cave Bat · 💎 Crystal Golem.
+
+### Controls & gear
+- Walk with WASD / arrows (diagonals too) or the on-screen joystick on phones. Hold Space / the action button to keep swinging.
+- **Health** ❤️: at 0 you're knocked out and wake at home base.
+- **Shop**: Forge (2 ore + 1 Coal → 1 bar), Anvil (forge your next **pickaxe** or **dagger** from bars), Cart (🧪 Potion, 🥪 Lunch, 🍀 Charm, 🧨 Dynamite, 🪨 Coal).
 
 ## Custom sprites
 You can add your own character, ore and station art as PNG sprite sheets — see [`sprites/README.md`](sprites/README.md). Start from `sprites/example-miner.png` and the labelled `sprites/character-template-guide.png`.

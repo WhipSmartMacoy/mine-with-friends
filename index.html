@@ -96,6 +96,8 @@
   .stage { grid-area: stage; position: relative; min-height: 0; min-width: 0; background: #2e2236; border-radius: 8px; border: 2px solid #f4ecd0;
             box-shadow: inset 0 0 0 2px #141c48; overflow: hidden; }
   #mine { display: block; width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; touch-action: none; cursor: pointer; }
+  .minimap { position: absolute; top: 8px; right: 8px; width: 84px; height: 84px; image-rendering: pixelated; pointer-events: none;
+             border: 2px solid #f4ecd0; border-radius: 6px; box-shadow: inset 0 0 0 1px #141c48; opacity: .92; }
   .toast { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); max-width: 92%; text-align: center;
            background: linear-gradient(180deg, #4a62b8, #22307a); border: 2px solid var(--line); border-radius: 6px; padding: 6px 12px; font-size: .9rem;
            box-shadow: inset 0 0 0 2px #141c48;
@@ -267,6 +269,7 @@
   <div class="playarea">
     <div class="stage" id="stage">
       <canvas id="mine"></canvas>
+      <canvas id="minimap" class="minimap" width="96" height="96"></canvas>
       <div class="toast fade" id="result"></div>
       <div class="menu hidden" id="menu" role="dialog" aria-modal="true">
         <div class="menu-head"><h3 id="menu-title"></h3><button id="menu-close">✕</button></div>
@@ -387,7 +390,7 @@ function makeEnemy(s, level, x, y) {
   const type = level <= 3 ? "slime" : level <= 6 ? "bat" : "golem", T = ENEMY_TYPES[type];
   const scale = 1 + (level - 1) * 0.22;
   const hp = Math.round(T.hp * scale);
-  return { id: s.nextEnemyId++, type, level, x, y, dir: "down", hp, max: hp, dmg: T.dmg + Math.floor(level / 2),
+  return { id: (s.depth || 0) * 100000 + s.nextEnemyId++, type, level, x, y, dir: "down", hp, max: hp, dmg: T.dmg + Math.floor(level / 2),
            gold: Math.round(T.gold * scale), xp: Math.round(T.xp * scale), nextStep: Date.now() + 700, nextAtk: 0 };
 }
 const enemyAt = (s, x, y) => (s.enemies || []).find(e => e.x === x && e.y === y);
@@ -399,25 +402,89 @@ const MILESTONES = [
   { label: "Mine a Diamond",             test: t => (t.ores.Diamond || 0) > 0 },
   { label: "Mine every type of rock",    test: t => ROCKS.every(r => (t.ores[r.name] || 0) > 0) },
   { label: "Defeat 10 enemies",          test: t => (t.kills || 0) >= 10 },
+  { label: "Reach depth 5 of the mine",  test: t => (t.maxDepth || 1) >= 5 },
   { label: "Both own a Mythril pickaxe", test: (t, p) => p.every(x => x.pick >= 9) },
 ];
 
-// ---- Rooms (tiles). Both rooms share one 20x12 grid.
-const T = 16, S = 3, TS = T * S, W = 15, H = 15, ROCK_COUNT = 14;   // rooms are 15x15 tiles
+// ---- Space. Every screen ("room") is 15x15 tiles.
+const T = 16, S = 3, TS = T * S, W = 15, H = 15, ROCK_COUNT = 14;
 const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
-const ROOMS = {
-  mine:     { inside: (x, y) => x >= 1 && x <= W - 2 && y >= 2 && y <= H - 2, door: { x: 7, y: 1, to: "upgrades" } },
-  upgrades: { inside: (x, y) => x >= 1 && x <= W - 2 && y >= 3 && y <= H - 3, door: { x: 7, y: H - 2, to: "mine" } },
-};
-const ARRIVE = { upgrades: { x: 7, y: H - 3, dir: "up" }, mine: { x: 7, y: 2, dir: "down" } };
-// Interactive stations in the Upgrades room
+
+// The overworld: 12x12 rooms joined into one seamless 180x180-tile map (no doors).
+const WR = 12, WT = W * WR;
+const HOME_ROOM = { rx: 6, ry: 6 }, SHOP_ROOM = { rx: 7, ry: 6 }, CAVE_ROOM = { rx: 5, ry: 6 };
+const HOME = { x: HOME_ROOM.rx * W + 7, y: HOME_ROOM.ry * H + 9 };                 // where you start / wake up
+const HOUSE = { x: HOME_ROOM.rx * W + 6, y: HOME_ROOM.ry * H + 5, w: 3, h: 2 };      // solid footprint of the cottage
+const CAVE = { x: CAVE_ROOM.rx * W + 7, y: CAVE_ROOM.ry * H + 5 };                  // mine entrance (walk into it)
+const CAVE_EXIT = { x: CAVE.x, y: CAVE.y + 1, dir: "down" };
+const PATH_Y = HOME_ROOM.ry * H + 7;
+const SPAWNS = [{ x: HOME.x - 1, y: HOME.y }, { x: HOME.x + 1, y: HOME.y }];
+// The shop now stands outdoors, in the room east of home
 const STATIONS = [
-  { id: "cart",  x: 2,  y: 3, name: "Upgrade Cart", verb: "browse upgrades" },
-  { id: "forge", x: 7,  y: 3, name: "Forge",        verb: "smelt bars" },
-  { id: "anvil", x: 12, y: 3, name: "Anvil",        verb: "craft gear" },
+  { id: "cart",  x: SHOP_ROOM.rx * W + 4,  y: SHOP_ROOM.ry * H + 5, name: "Upgrade Cart", verb: "browse upgrades" },
+  { id: "forge", x: SHOP_ROOM.rx * W + 7,  y: SHOP_ROOM.ry * H + 5, name: "Forge",        verb: "smelt bars" },
+  { id: "anvil", x: SHOP_ROOM.rx * W + 10, y: SHOP_ROOM.ry * H + 5, name: "Anvil",        verb: "craft gear" },
 ];
-const ROOM_NAMES = { mine: "mine", upgrades: "Upgrades room" };
-const SPAWNS = [{ x: 5, y: 7 }, { x: 9, y: 7 }];
+// Mine levels (one room each): ladder up in the top wall, arrive just below it.
+const ROOMS = { mine: { inside: (x, y) => x >= 1 && x <= W - 2 && y >= 2 && y <= H - 2, door: { x: 7, y: 1 } } };
+const MINE_ARRIVE = { x: 7, y: 2, dir: "down" };
+
+const roomIdx = p => ({ rx: Math.floor(p.x / W), ry: Math.floor(p.y / H) });
+const isMine = room => typeof room === "string" && room.startsWith("mine:");
+const depthOf = room => isMine(room) ? +room.slice(5) : 0;
+const validRoom = room => room === "world" || (/^mine:\d{1,3}$/.test(room) && depthOf(room) >= 1);
+const sameView = (a, b) => a.room === b.room &&
+  (a.room !== "world" || (Math.floor(a.x / W) === Math.floor(b.x / W) && Math.floor(a.y / H) === Math.floor(b.y / H)));
+const tunnelChance = d => Math.max(0.015, 0.07 / (1 + 0.25 * (d - 1)));   // rarer the deeper you go
+
+// ---- Overworld tiles (deterministic from the coordinates, nothing to save)
+function hash2(x, y, k = 0) { const v = Math.sin(x * 127.1 + y * 311.7 + k * 74.7) * 43758.5453; return v - Math.floor(v); }
+function vnoise(x, y) {
+  const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi, sm = t => t * t * (3 - 2 * t);
+  const a = hash2(xi, yi, 9), b = hash2(xi + 1, yi, 9), c = hash2(xi, yi + 1, 9), d = hash2(xi + 1, yi + 1, 9);
+  return a + (b - a) * sm(xf) + (c - a) * sm(yf) + (a - b - c + d) * sm(xf) * sm(yf);
+}
+const inRoom = (x, y, r) => Math.floor(x / W) === r.rx && Math.floor(y / H) === r.ry;
+const worldTileCache = new Map();
+function worldTile(x, y) {
+  if (x < 0 || y < 0 || x >= WT || y >= WT) return "edge";
+  const key = x * 1000 + y;
+  let t = worldTileCache.get(key);
+  if (t) return t;
+  t = (() => {
+    if (x === 0 || y === 0 || x === WT - 1 || y === WT - 1) return "tree";              // forest border
+    if (x >= HOUSE.x && x < HOUSE.x + HOUSE.w && y >= HOUSE.y && y < HOUSE.y + HOUSE.h) return "house";
+    if (x === CAVE.x && y === CAVE.y) return "cave";
+    if (y >= CAVE.y - 2 && y <= CAVE.y && Math.abs(x - CAVE.x) <= 2) return "cliff";
+    if (y === PATH_Y && x >= CAVE.x && x <= SHOP_ROOM.rx * W + 11) return "path";       // road: mine – home – shop
+    if (x === CAVE.x && y > CAVE.y && y < PATH_Y) return "path";
+    if (x === HOME.x && y > HOUSE.y + 1 && y < PATH_Y) return "path";
+    const town = [HOME_ROOM, SHOP_ROOM, CAVE_ROOM].some(r => inRoom(x, y, r));
+    const r = hash2(x, y);
+    if (town) return r < 0.07 ? "flower" : "grass";
+    if (vnoise(x / 7, y / 7) > 0.74) return "water";
+    if (r < 0.075) return "tree";
+    if (r < 0.085) return "boulder";
+    if (r < 0.13) return "flower";
+    return "grass";
+  })();
+  worldTileCache.set(key, t);
+  return t;
+}
+const SOLID_TILES = new Set(["edge", "tree", "water", "boulder", "house", "cliff", "cave"]);
+
+// ---- Mine levels: each depth keeps its own rocks, enemies and (maybe) a tunnel further down
+function newMineLevel(d, players) {
+  const L = { depth: d, rocks: [], enemies: [], nextRockId: 1, nextEnemyId: 1, tunnel: null };
+  fillRocks(L, players);
+  return L;
+}
+function mineLevel(d) {
+  if (!state.mines[d]) { state.mines[d] = newMineLevel(d, state.players); state.team.maxDepth = Math.max(state.team.maxDepth || 1, d); }
+  return state.mines[d];
+}
+const NO_LEVEL = { rocks: [], enemies: [] };
+const levelOf = room => isMine(room) ? (state.mines[depthOf(room)] || NO_LEVEL) : NO_LEVEL;
 
 const PEER_PREFIX = "mine-with-friends-";
 const PREFS_KEY = "mwf-prefs";
@@ -426,26 +493,31 @@ const saveKey = code => "mwf-lobby-" + code;
 // ================= State =================
 function newPlayer(name, seat) {
   return { name, xp: 0, level: 1, pick: 0, dagger: 0, hp: 20, ko: 0, tp: 0, kills: 0, mined: 0, fails: 0, streak: 0, ores: {},
-           charm: 0, dynamite: 0, room: "mine", x: SPAWNS[seat].x, y: SPAWNS[seat].y, dir: "down" };
+           charm: 0, dynamite: 0, room: "world", x: SPAWNS[seat].x, y: SPAWNS[seat].y, fx: SPAWNS[seat].x, fy: SPAWNS[seat].y, dir: "down" };
 }
 function newGame() {
   const s = {
     players: [newPlayer("Player 1", 0), newPlayer("Player 2", 1)],
     shared: { gold: 0, bag: {}, bars: {} },
-    team: { mined: 0, fails: 0, goldEarned: 0, ores: {}, kills: 0 },
-    log: [], rocks: [], nextRockId: 1, enemies: [], nextEnemyId: 1,
+    team: { mined: 0, fails: 0, goldEarned: 0, ores: {}, kills: 0, maxDepth: 1 },
+    log: [], mines: {},
   };
-  fillRocks(s);
+  s.mines[1] = newMineLevel(1, s.players);
   return s;
 }
 function migrate(s) {   // bring older saves up to date
+  if (!s.mines) {       // before the overworld there was one mine (+ an Upgrades room)
+    s.mines = { 1: { depth: 1, rocks: (s.rocks || []).filter(r => ROOMS.mine.inside(r.x, r.y)),
+                     enemies: (s.enemies || []).filter(e => ROOMS.mine.inside(e.x, e.y)),
+                     nextRockId: s.nextRockId || 1, nextEnemyId: s.nextEnemyId || 1, tunnel: null } };
+    delete s.rocks; delete s.enemies; delete s.nextRockId; delete s.nextEnemyId;
+  }
   s.players.forEach((p, i) => {
+    if (p.room === "mine") p.room = "mine:1";
+    if (!validRoom(p.room)) Object.assign(p, { room: "world", x: SPAWNS[i].x, y: SPAWNS[i].y });
     if (p.x == null) Object.assign(p, { x: SPAWNS[i].x, y: SPAWNS[i].y, dir: "down" });
-    if (!p.room || p.room === "shop") p.room = p.room === "shop" ? "upgrades" : "mine";
-    if (p.room === "upgrades" && !walkable(s, "upgrades", p.x, p.y)) Object.assign(p, ARRIVE.upgrades);
     p.charm = p.charm || 0; p.dynamite = p.dynamite || 0;
     p.dagger = p.dagger || 0; p.kills = p.kills || 0; p.tp = p.tp || 0;
-    if (p.fx == null || Math.round(p.fx) !== p.x || Math.round(p.fy) !== p.y) { p.fx = p.x; p.fy = p.y; }
     if (p.hp == null) p.hp = maxHp(p);
   });
   if (!s.shared) {      // older saves kept gold/ore/bars per player: pool them into the team stash
@@ -457,20 +529,16 @@ function migrate(s) {   // bring older saves up to date
       delete p.gold; delete p.bag; delete p.bars;
     }
   }
-  if (!s.enemies) { s.enemies = []; s.nextEnemyId = 1; }
-  s.team.kills = s.team.kills || 0;
+  s.team.kills = s.team.kills || 0; s.team.maxDepth = s.team.maxDepth || 1;
   delete s.current; delete s.actionsLeft;
-  if (!s.rocks) { s.rocks = []; s.nextRockId = 1; }
-  // rooms changed size over time: drop anything outside them and move stranded miners to safety
-  s.rocks = s.rocks.filter(r => ROOMS.mine.inside(r.x, r.y));
-  s.enemies = (s.enemies || []).filter(e => ROOMS.mine.inside(e.x, e.y));
+  for (const L of Object.values(s.mines)) { L.enemies = L.enemies || []; L.tunnel = L.tunnel || null; fillRocks(L, s.players); }
+  // move anyone standing somewhere they can't be (sizes changed over time)
   s.players.forEach((p, i) => {
-    if (!ROOMS[p.room].inside(p.x, p.y) || (p.room === "mine" && s.rocks.some(r => r.x === p.x && r.y === p.y))) {
-      const at = p.room === "mine" ? SPAWNS[i] : ARRIVE.upgrades;
-      Object.assign(p, { x: at.x, y: at.y, fx: at.x, fy: at.y });
-    }
+    const L = isMine(p.room) ? s.mines[depthOf(p.room)] : null;
+    const ok = isMine(p.room) ? (L && ROOMS.mine.inside(p.x, p.y) && !rockAt(L, p.x, p.y)) : !SOLID_TILES.has(worldTile(p.x, p.y)) && !stationAt(p.x, p.y);
+    if (!ok) Object.assign(p, isMine(p.room) && L ? { x: MINE_ARRIVE.x, y: MINE_ARRIVE.y } : { room: "world", x: SPAWNS[i].x, y: SPAWNS[i].y });
+    if (p.fx == null || Math.round(p.fx) !== p.x || Math.round(p.fy) !== p.y) { p.fx = p.x; p.fy = p.y; }
   });
-  fillRocks(s);
   return s;
 }
 
@@ -501,89 +569,96 @@ function levelUp(p) {
   return leveled;
 }
 
-const rockAt = (s, x, y) => s.rocks.find(r => r.x === x && r.y === y);
+const rockAt = (L, x, y) => L.rocks.find(r => r.x === x && r.y === y);
 const stationAt = (x, y) => STATIONS.find(p => p.x === x && p.y === y);
-const walkable = (s, room, x, y) =>
-  ROOMS[room].inside(x, y) && (room === "mine" ? !rockAt(s, x, y) : !stationAt(x, y));
+// room is "world" or "mine:<depth>". The first argument is unused (kept for older call sites).
+function walkable(_s, room, x, y) {
+  if (room === "world") return !SOLID_TILES.has(worldTile(x, y)) && !stationAt(x, y);
+  const L = levelOf(room);
+  return ROOMS.mine.inside(x, y) && !rockAt(L, x, y);
+}
 const adjacent = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y) === 1;
+const mineFree = (L, x, y) => ROOMS.mine.inside(x, y) && !rockAt(L, x, y);
 
-function allConnected(s) {   // rocks must never wall anyone in
+function allConnected(L) {   // rocks must never wall anyone in
   const free = [];
-  for (let y = 2; y <= H - 2; y++) for (let x = 1; x <= W - 2; x++) if (walkable(s, "mine", x, y)) free.push(x + "," + y);
+  for (let y = 2; y <= H - 2; y++) for (let x = 1; x <= W - 2; x++) if (mineFree(L, x, y)) free.push(x + "," + y);
   if (!free.length) return true;
   const seen = new Set([free[0]]), q = [free[0]];
   while (q.length) {
     const [x, y] = q.pop().split(",").map(Number);
     for (const [dx, dy] of Object.values(DIRS)) {
       const k = (x + dx) + "," + (y + dy);
-      if (!seen.has(k) && walkable(s, "mine", x + dx, y + dy)) { seen.add(k); q.push(k); }
+      if (!seen.has(k) && mineFree(L, x + dx, y + dy)) { seen.add(k); q.push(k); }
     }
   }
   return seen.size === free.length;
 }
 
-function rollLevel(s) {
-  const [a, b] = s.players.map(maxRock);
-  const easy = Math.min(a, b), t = Math.round((a + b) / 2);
-  const minable = s.rocks.filter(r => r.level <= easy).length;
-  if (minable < 5) return 1 + Math.floor(Math.random() * easy);
-  const weights = ROCKS.map(r => r.level <= t ? 0.6 + r.level / t : r.level <= t + 3 ? 0.9 * Math.pow(0.45, r.level - t) : 0);
-  let roll = Math.random() * weights.reduce((x, y) => x + y, 0);
-  for (let i = 0; i < weights.length; i++) { roll -= weights[i]; if (roll <= 0) return i + 1; }
-  return 1;
+// Deeper levels hold tougher rock (a few always stay mineable for the team).
+function rollLevel(L, players) {
+  const easy = Math.min(...players.map(maxRock));
+  const c = Math.min(10, L.depth || 1);
+  if (L.rocks.filter(r => r.level <= easy).length < 4) return Math.max(1, Math.min(easy, c - Math.floor(Math.random() * 3)));
+  const opts = [[c - 2, .45], [c - 1, 1], [c, 1.4], [c + 1, .8], [c + 2, .35]].filter(([l]) => l >= 1 && l <= 10);
+  let roll = Math.random() * opts.reduce((a, [, w]) => a + w, 0);
+  for (const [l, w] of opts) { roll -= w; if (roll <= 0) return l; }
+  return c;
 }
 
-function spawnRock(s) {
-  const keepClear = [ARRIVE.mine, ...s.players.filter(p => p.room === "mine")];
+function spawnRock(L, players = state.players) {
+  const here = players.filter(p => p.room === "mine:" + L.depth);
+  const keepClear = [MINE_ARRIVE, ...here, ...(L.tunnel ? [L.tunnel] : [])];
   for (let tries = 0; tries < 200; tries++) {
     const x = 1 + Math.floor(Math.random() * (W - 2)), y = 2 + Math.floor(Math.random() * (H - 3));
-    if (!walkable(s, "mine", x, y) || enemyAt(s, x, y)) continue;
+    if (!mineFree(L, x, y) || enemyAt(L, x, y)) continue;
     if (keepClear.some(p => Math.abs(p.x - x) + Math.abs(p.y - y) <= 1)) continue;
-    const rock = { id: s.nextRockId++, x, y, level: rollLevel(s), cracks: 0 };
-    s.rocks.push(rock);
-    if (allConnected(s)) return rock;
-    s.rocks.pop();
+    const rock = { id: L.nextRockId++, x, y, level: rollLevel(L, players), cracks: 0 };
+    L.rocks.push(rock);
+    if (allConnected(L)) return rock;
+    L.rocks.pop();
   }
   return null;
 }
-function fillRocks(s) { while (s.rocks.length < ROCK_COUNT && spawnRock(s)); }
+function fillRocks(L, players = state.players) { while (L.rocks.length < ROCK_COUNT && spawnRock(L, players)); }
 
 // Host only: applies an action for a seat. Returns a result, or null if not allowed.
 // No turns: both players act whenever they like; swings have a short cooldown.
 function applyAction(seat, action) {
   const p = state.players[seat], sh = stash(), now = Date.now();
   if (p.ko) return null;
-  if (action.x != null && action.room === p.room && walkable(state, p.room, action.x, action.y) && !enemyAt(state, action.x, action.y)) {
+  const L = levelOf(p.room);
+  if (action.x != null && action.room === p.room && walkable(state, p.room, action.x, action.y) && !enemyAt(L, action.x, action.y)) {
     p.x = action.x; p.y = action.y; if (action.fx != null) { p.fx = action.fx; p.fy = action.fy; }
   }
   if (DIRS[action.dir]) p.dir = action.dir;
 
   if (action.type === "mine" || action.type === "attack") {
-    if (p.room !== "mine" || (p.busy || 0) > now) return null;
+    if (!isMine(p.room) || (p.busy || 0) > now) return null;
     p.busy = now + 420;
   }
 
   if (action.type === "attack") {
-    const e = state.enemies.find(x => x.id === action.enemyId);
+    const e = L.enemies.find(x => x.id === action.enemyId);
     if (!e || !adjacent(p, e)) return null;
     const crit = Math.random() < 0.12;
     const dmg = (daggerDamage(p) + Math.floor(Math.random() * 2)) * (crit ? 2 : 1);
     e.hp -= dmg;
     const name = ENEMY_TYPES[e.type].name;
     if (e.hp <= 0) {
-      state.enemies = state.enemies.filter(x => x !== e);
+      L.enemies = L.enemies.filter(x => x !== e);
       sh.gold += e.gold; p.xp += e.xp; p.kills++; state.team.kills++; state.team.goldEarned += e.gold;
       let text = `${p.name} defeated a ${name}! +${e.gold} gold, +${e.xp} XP`;
       if (levelUp(p)) { text += ` — reached Miner level ${p.level}!`; p.hp = maxHp(p); }
       addLog(text, true);
-      return { text, ok: true, seat, weapon: "dagger", fx: { room: "mine", x: e.x, y: e.y, color: "#ffffff", label: `+${e.gold} 🪙` } };
+      return { text, ok: true, seat, weapon: "dagger", fx: { room: p.room, x: e.x, y: e.y, color: "#ffffff", label: `+${e.gold} 🪙` } };
     }
     return { quiet: true, ok: true, seat, weapon: "dagger", hitEnemy: e.id,
-             fx: { room: "mine", x: e.x, y: e.y, color: "#ffe070", label: `${crit ? "CRIT " : ""}-${dmg}` } };
+             fx: { room: p.room, x: e.x, y: e.y, color: "#ffe070", label: `${crit ? "CRIT " : ""}-${dmg}` } };
   }
 
   if (action.type === "mine") {
-    const rock = state.rocks.find(r => r.id === action.rockId);
+    const rock = L.rocks.find(r => r.id === action.rockId);
     if (!rock || !adjacent(p, rock) || lockReason(p, rock.level)) return null;
     const info = ROCKS[rock.level - 1];
     const usedDynamite = p.dynamite > 0;
@@ -601,8 +676,13 @@ function applyAction(seat, action) {
       state.team.ores[info.name] = (state.team.ores[info.name] || 0) + bonus;
       text = `${p.name} ${usedDynamite ? "blasted" : "mined"} ${bonus > 1 ? "2 " : ""}${info.name} ore! +${gold} gold, +${info.xp} XP`;
       if (levelUp(p)) { text += ` — reached Miner level ${p.level}!`; p.hp = maxHp(p); }
-      state.rocks = state.rocks.filter(r => r !== rock);
-      spawnRock(state);
+      L.rocks = L.rocks.filter(r => r !== rock);
+      // rarely the rock gives way to a tunnel leading deeper (rarer the deeper you are)
+      if (!L.tunnel && Math.random() < tunnelChance(L.depth)) {
+        L.tunnel = { x: rock.x, y: rock.y };
+        text += ` The ground gave way — a tunnel leads down to depth ${L.depth + 1}!`;
+      }
+      spawnRock(L);
     } else {
       p.fails++; p.streak = 0; state.team.fails++;
       rock.cracks = Math.min(2, (rock.cracks || 0) + 1);
@@ -610,24 +690,24 @@ function applyAction(seat, action) {
       p.xp += consolation; levelUp(p);
       text = `${p.name} swung at ${info.name}… it cracked but held.`;
       // a failed swing can disturb something living in the rock
-      if (state.enemies.length < MAX_ENEMIES && Math.random() < ENEMY_SPAWN_CHANCE) {
+      if (L.enemies.length < MAX_ENEMIES && Math.random() < ENEMY_SPAWN_CHANCE) {
         const spots = Object.values(DIRS).map(([dx, dy]) => ({ x: rock.x + dx, y: rock.y + dy }))
-          .filter(t => walkable(state, "mine", t.x, t.y) && !enemyAt(state, t.x, t.y) && !state.players.some(q => q.room === "mine" && q.x === t.x && q.y === t.y));
+          .filter(t => mineFree(L, t.x, t.y) && !enemyAt(L, t.x, t.y) && !state.players.some(q => q.room === p.room && q.x === t.x && q.y === t.y));
         if (spots.length) {
-          const t = spots[Math.floor(Math.random() * spots.length)], e = makeEnemy(state, rock.level, t.x, t.y);
-          state.enemies.push(e);
+          const t = spots[Math.floor(Math.random() * spots.length)], e = makeEnemy(L, rock.level, t.x, t.y);
+          L.enemies.push(e);
           text += ` A ${ENEMY_TYPES[e.type].name} burst out!`;
         }
       }
     }
     addLog(text, ok);
-    return { text, ok, seat, fx: { room: "mine", x: rock.x, y: rock.y, color: info.color, label: ok ? `+${gold} 🪙` : "Crack!" } };
+    return { text, ok, seat, fx: { room: p.room, x: rock.x, y: rock.y, color: info.color, label: ok ? `+${gold} 🪙` : "Crack!" } };
   }
 
-  // Station actions in the Upgrades room use the team stash.
+  // Station actions at the outdoor shop use the team stash.
   const station = STATIONS.find(st => st.id === action.station);
-  if (p.room !== "upgrades" || !station || !adjacent(p, station)) return null;
-  const fx = (color, label) => ({ room: "upgrades", x: station.x, y: station.y, color, label });
+  if (p.room !== "world" || !station || !adjacent(p, station)) return null;
+  const fx = (color, label) => ({ room: "world", x: station.x, y: station.y, color, label });
   let text;
 
   if (action.type === "buy" && station.id === "cart") {
@@ -670,7 +750,7 @@ function applyAction(seat, action) {
 }
 
 // ---- Host simulation: enemies hunt players in the mine; knocked-out players wake up in Upgrades.
-let lastPush = 0, simDirty = false, pendingHits = [], nextAmbient = 0;
+let lastPush = 0, simDirty = false, pendingHits = [], nextAmbient = {};
 function hostTick() {
   if (!net.isHost || !state || !net.code) return;
   const now = Date.now();
@@ -678,51 +758,55 @@ function hostTick() {
     if (i === 1 && !net.connected) return;
     if (p.ko && now >= p.ko) {
       p.ko = 0; p.hp = Math.ceil(maxHp(p) * 0.6);
-      Object.assign(p, { room: "upgrades", ...ARRIVE.upgrades, fx: ARRIVE.upgrades.x, fy: ARRIVE.upgrades.y }); p.tp++;
-      addLog(`${p.name} came to in the Upgrades room.`, true); simDirty = true;
+      const at = SPAWNS[i];
+      Object.assign(p, { room: "world", x: at.x, y: at.y, fx: at.x, fy: at.y, dir: "down" }); p.tp++;
+      addLog(`${p.name} came to at home base.`, true); simDirty = true;
     }
-    if (!p.ko && p.room === "upgrades" && p.hp < maxHp(p) && now >= (p.regen || 0)) {      // rest up in the safe room
+    if (!p.ko && p.room === "world" && inRoom(p.x, p.y, HOME_ROOM) && p.hp < maxHp(p) && now >= (p.regen || 0)) {   // rest up at home
       p.hp = Math.min(maxHp(p), p.hp + 1); p.regen = now + 1200; simDirty = true;
     }
   });
-  const targets = state.players.filter((p, i) => p.room === "mine" && !p.ko && (i === 0 || net.connected));
-  if (now >= nextAmbient) {                                   // enemies also wander in on their own
-    nextAmbient = now + 1000;
-    if (targets.length && state.enemies.length < MAX_ENEMIES && Math.random() < AMBIENT_SPAWN_CHANCE) {
-      const reach = Math.round(targets.reduce((a, p) => a + maxRock(p), 0) / targets.length);
-      const level = Math.max(1, Math.min(10, reach + Math.floor(Math.random() * 3) - 1));
-      for (let tries = 0; tries < 60; tries++) {
-        const x = 1 + Math.floor(Math.random() * (W - 2)), y = 2 + Math.floor(Math.random() * (H - 3));
-        if (!walkable(state, "mine", x, y) || enemyAt(state, x, y)) continue;
-        if (state.players.some(p => p.room === "mine" && Math.abs(p.x - x) + Math.abs(p.y - y) < 4)) continue;
-        const e = makeEnemy(state, level, x, y); state.enemies.push(e);
-        addLog(`A ${ENEMY_TYPES[e.type].name} crept out of the shadows!`, false); simDirty = true;
-        break;
+  // simulate every mine level that has someone in it
+  for (const L of Object.values(state.mines)) {
+    const key = "mine:" + L.depth;
+    const targets = state.players.filter((p, i) => p.room === key && !p.ko && (i === 0 || net.connected));
+    if (!targets.length) continue;
+    if (now >= (nextAmbient[key] || 0)) {                     // enemies also wander in on their own
+      nextAmbient[key] = now + 1000;
+      if (L.enemies.length < MAX_ENEMIES && Math.random() < AMBIENT_SPAWN_CHANCE) {
+        const reach = Math.round(targets.reduce((a, p) => a + maxRock(p), 0) / targets.length);
+        const level = Math.max(1, Math.min(10, Math.max(reach, L.depth) + Math.floor(Math.random() * 3) - 1));
+        for (let tries = 0; tries < 60; tries++) {
+          const x = 1 + Math.floor(Math.random() * (W - 2)), y = 2 + Math.floor(Math.random() * (H - 3));
+          if (!mineFree(L, x, y) || enemyAt(L, x, y)) continue;
+          if (state.players.some(p => p.room === key && Math.abs(p.x - x) + Math.abs(p.y - y) < 4)) continue;
+          const e = makeEnemy(L, level, x, y); L.enemies.push(e);
+          addLog(`A ${ENEMY_TYPES[e.type].name} crept out of the shadows at depth ${L.depth}!`, false); simDirty = true;
+          break;
+        }
       }
     }
-  }
-  for (const e of state.enemies) {
-    if (!targets.length) break;
-    const T = ENEMY_TYPES[e.type];
-    const tgt = targets.reduce((a, b) => Math.abs(a.x - e.x) + Math.abs(a.y - e.y) <= Math.abs(b.x - e.x) + Math.abs(b.y - e.y) ? a : b);
-    if (adjacent(e, tgt)) {
-      e.dir = tgt.x > e.x ? "right" : tgt.x < e.x ? "left" : tgt.y > e.y ? "down" : "up";
-      if (now >= e.nextAtk) {
-        e.nextAtk = now + T.atk; e.attackAt = now;
-        tgt.hp = Math.max(0, tgt.hp - e.dmg);
-        const seat = state.players.indexOf(tgt);
-        pendingHits.push({ seat, dmg: e.dmg });
-        if (tgt.hp <= 0) { tgt.ko = now + KO_MS; addLog(`${tgt.name} was knocked out by a ${T.name}!`, false); }
-        simDirty = true;
+    for (const e of L.enemies) {
+      const T = ENEMY_TYPES[e.type];
+      const tgt = targets.reduce((a, b) => Math.abs(a.x - e.x) + Math.abs(a.y - e.y) <= Math.abs(b.x - e.x) + Math.abs(b.y - e.y) ? a : b);
+      if (adjacent(e, tgt)) {
+        e.dir = tgt.x > e.x ? "right" : tgt.x < e.x ? "left" : tgt.y > e.y ? "down" : "up";
+        if (now >= e.nextAtk) {
+          e.nextAtk = now + T.atk; e.attackAt = now;
+          tgt.hp = Math.max(0, tgt.hp - e.dmg);
+          pendingHits.push({ seat: state.players.indexOf(tgt), dmg: e.dmg });
+          if (tgt.hp <= 0) { tgt.ko = now + KO_MS; addLog(`${tgt.name} was knocked out by a ${T.name}!`, false); }
+          simDirty = true;
+        }
+      } else if (now >= e.nextStep) {
+        e.nextStep = now + T.step;
+        const opts = Object.entries(DIRS).map(([d, [dx, dy]]) => ({ d, x: e.x + dx, y: e.y + dy }))
+          .filter(o => mineFree(L, o.x, o.y) && !enemyAt(L, o.x, o.y) && !state.players.some(q => q.room === key && q.x === o.x && q.y === o.y))
+          .sort((a, b) => (Math.abs(a.x - tgt.x) + Math.abs(a.y - tgt.y)) - (Math.abs(b.x - tgt.x) + Math.abs(b.y - tgt.y)));
+        const cur = Math.abs(e.x - tgt.x) + Math.abs(e.y - tgt.y);
+        const pick = opts.find(o => Math.abs(o.x - tgt.x) + Math.abs(o.y - tgt.y) < cur) || (Math.random() < .3 ? opts[0] : null);
+        if (pick) { e.x = pick.x; e.y = pick.y; e.dir = pick.d; simDirty = true; }
       }
-    } else if (now >= e.nextStep) {
-      e.nextStep = now + T.step;
-      const opts = Object.entries(DIRS).map(([d, [dx, dy]]) => ({ d, x: e.x + dx, y: e.y + dy }))
-        .filter(o => walkable(state, "mine", o.x, o.y) && !enemyAt(state, o.x, o.y) && !state.players.some(q => q.room === "mine" && q.x === o.x && q.y === o.y))
-        .sort((a, b) => (Math.abs(a.x - tgt.x) + Math.abs(a.y - tgt.y)) - (Math.abs(b.x - tgt.x) + Math.abs(b.y - tgt.y)));
-      const cur = Math.abs(e.x - tgt.x) + Math.abs(e.y - tgt.y);
-      const pick = opts.find(o => Math.abs(o.x - tgt.x) + Math.abs(o.y - tgt.y) < cur) || (Math.random() < .3 ? opts[0] : null);
-      if (pick) { e.x = pick.x; e.y = pick.y; e.dir = pick.d; simDirty = true; }
     }
   }
   if (simDirty && now - lastPush > 150) {
@@ -808,7 +892,8 @@ function onHostData(c, msg) {
     state.players[1].name = String(msg.name || "Player 2").slice(0, 12);
     state.players[1].look = cleanLook(msg.look, 1);
     const g = state.players[1];
-    if (!ROOMS[g.room] || !walkable(state, g.room, g.x, g.y)) Object.assign(g, { room: "mine", ...SPAWNS[1] });
+    if (!validRoom(g.room) || !walkable(state, g.room, g.x, g.y)) Object.assign(g, { room: "world", ...SPAWNS[1], fx: SPAWNS[1].x, fy: SPAWNS[1].y });
+    if (isMine(g.room)) mineLevel(depthOf(g.room));
     save(); setConnected(true);
     broadcast({ text: `${state.players[1].name} joined the mine!`, ok: true });
   } else if (msg.type === "action") {
@@ -818,8 +903,10 @@ function onHostData(c, msg) {
     const g = state.players[1];
     if (DIRS[msg.dir]) g.dir = msg.dir;
     if (g.ko) return;
-    if (ROOMS[msg.room] && walkable(state, msg.room, msg.x, msg.y) && (msg.tp ?? g.tp) === g.tp) {
+    if (validRoom(msg.room) && isMine(msg.room)) mineLevel(depthOf(msg.room));      // first visit creates the level
+    if (validRoom(msg.room) && walkable(state, msg.room, msg.x, msg.y) && (msg.tp ?? g.tp) === g.tp) {
       if (msg.room !== g.room || Math.abs(msg.x - g.x) + Math.abs(msg.y - g.y) <= 2) {
+        if (msg.room !== g.room) simDirty = true;
         g.room = msg.room; g.x = msg.x; g.y = msg.y;
         g.fx = typeof msg.fx === "number" ? msg.fx : msg.x; g.fy = typeof msg.fy === "number" ? msg.fy : msg.y;
       }
@@ -1455,6 +1542,7 @@ const isTouch = matchMedia("(hover: none)").matches;
 let viewMode = (readJSON(PREFS_KEY) || {}).viewV2 || "full";   // rooms fit on any screen now
 let view = { x: 0, y: 0, w: W * TS, h: H * TS };
 let ui = 1;   // text scale, so labels stay readable however small the game is shown
+const org = { x: 0, y: 0 };   // top-left tile of the room on screen (overworld rooms sit side by side)
 
 function updateView() {
   const stage = document.getElementById("stage");
@@ -1466,7 +1554,7 @@ function updateView() {
     if (th > H) { th = H; tw = Math.min(W, Math.round(th * aspect)); }
     th = Math.max(Math.min(H, 6), th); tw = Math.min(tw, W);
     const vw = tw * TS, vh = th * TS, d = disp[net.seat];
-    const cx = (d.x + .5) * TS, cy = (d.y + .5) * TS;
+    const cx = (d.x - org.x + .5) * TS, cy = (d.y - org.y + .5) * TS;
     view = { w: vw, h: vh,
              x: Math.round(Math.max(0, Math.min(W * TS - vw, cx - vw / 2))),
              y: Math.round(Math.max(0, Math.min(H * TS - vh, cy - vh / 2))) };
@@ -1486,10 +1574,10 @@ function setViewMode(m) {
 
 const TORCHES = [3, 10, 12];
 
-function makeBg(drawTile, lighting) {
+function makeBg(drawTile, lighting, seed0 = 12345) {
   const c = mkCanvas(W * TS * K, H * TS * K), g = c.getContext("2d");
   g.setTransform(K, 0, 0, K, 0, 0);
-  let seed = 12345; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  let seed = seed0; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   const h = S / 2;   // one 32-res art pixel, in world units
   const px = (x, y, w, hh, col) => { g.fillStyle = col; g.fillRect(x, y, w * h, hh * h); };
   drawTile(g, px, h, n => Math.floor(rnd() * n), rnd);
@@ -1536,7 +1624,7 @@ const backgrounds = {
       px(tx * TS + 14 * h, TS + 12 * h, 4, 12, "#6a4024"); px(tx * TS + 14 * h, TS + 12 * h, 1, 12, "#9a6a3a");
       px(tx * TS + 12 * h, TS + 10 * h, 8, 2, "#4a2a1a");
     }
-    const d = ROOMS.mine.door, DX = d.x * TS, DY = d.y * TS;   // door to the Upgrades room
+    const d = ROOMS.mine.door, DX = d.x * TS, DY = d.y * TS;   // ladder back up
     px(DX - 2 * h, DY - 6 * h, 36, 38, "#5a3a24"); px(DX - 2 * h, DY - 6 * h, 36, 2, "#9a6a3a");
     px(DX, DY - 4 * h, 32, 36, "#2a1a22"); px(DX + 2 * h, DY + 2 * h, 28, 30, "#3a2430");
     px(DX + 4 * h, (d.y + 1) * TS + 2 * h, 24, 6, "#b84a3a"); px(DX + 6 * h, (d.y + 1) * TS + 4 * h, 20, 2, "#e87a5a");
@@ -1544,8 +1632,10 @@ const backgrounds = {
     g.fillStyle = "#b07a44"; g.fillRect(DX - 18 * h, 2 * h, 68 * h, 2 * h);
     g.fillStyle = "#4a2a1a"; g.fillRect(DX - 18 * h, 13 * h, 68 * h, 1 * h);
     g.font = `bold ${9 * h}px "Trebuchet MS", sans-serif`; g.textAlign = "center"; g.textBaseline = "middle";
-    g.fillStyle = "#3a1e10"; g.fillText("UPGRADES", DX + 16 * h + h / 2, 9 * h);
-    g.fillStyle = "#fff0b0"; g.fillText("UPGRADES", DX + 16 * h, 8.5 * h);
+    g.fillStyle = "#3a1e10"; g.fillText("▲ UP ▲", DX + 16 * h + h / 2, 9 * h);
+    g.fillStyle = "#fff0b0"; g.fillText("▲ UP ▲", DX + 16 * h, 8.5 * h);
+    for (let r = 0; r < 5; r++) px(DX + 9 * h, DY - 2 * h + r * 6 * h, 14, 1, "#9a6a3a");          // ladder rungs
+    px(DX + 8 * h, DY - 4 * h, 2, 34, "#7a4e2a"); px(DX + 22 * h, DY - 4 * h, 2, 34, "#7a4e2a");
   }, g => {
     const fx = TS, fy = 2 * TS, fw = (W - 2) * TS, fh = (H - 3) * TS;
     for (const tx of TORCHES) {                              // warm pools of torch light
@@ -1557,54 +1647,100 @@ const backgrounds = {
     vg.addColorStop(0, "rgba(40,20,60,0)"); vg.addColorStop(1, "rgba(40,20,60,0.32)");   // soft edge shade
     g.fillStyle = vg; g.fillRect(fx, fy, fw, fh);
   }),
-  upgrades: makeBg((g, px, h, ri, rnd) => {
-    const inside = ROOMS.upgrades.inside;
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-      const X = x * TS, Y = y * TS;
-      if (inside(x, y)) {                                   // honey-coloured planks
-        for (const py of [0, 16]) {
-          const base = (x + py / 16) % 2 ? "#d0985a" : "#cc9456";
-          px(X, Y + py * h, 32, 16, base);
-          px(X, Y + py * h, 32, 2, ramp(base, 1)); px(X, Y + (py + 14) * h, 32, 2, ramp(base, -1));
-          px(X, Y + (py + 15) * h, 32, 1, "#8a5a34");
-          px(X + ((x + py / 16) % 2 ? 10 : 24) * h, Y + py * h, 1, 16, "#8a5a34");
-
-        }
-        if (y === 3) px(X, Y, 32, 4, "rgba(60,20,40,0.3)");
-      } else if (y >= 0 && y <= 2) {                        // plaster wall with timber beams & shelf
-        px(X, Y, 32, 32, y === 2 ? "#d8bc8e" : "#ecd6aa");
-
-        if (x % 3 === 2) { px(X + 12 * h, Y, 6, 32, "#8a5a34"); px(X + 12 * h, Y, 2, 32, "#b07a44"); px(X + 17 * h, Y, 1, 32, "#5a3420"); }
-        if (y === 0) { px(X, Y + 26 * h, 32, 6, "#8a5a34"); px(X, Y + 26 * h, 32, 2, "#b07a44"); }
-        if (y === 1) {
-          px(X, Y + 20 * h, 32, 3, "#8a5a34"); px(X, Y + 20 * h, 32, 1, "#c08a50"); px(X, Y + 23 * h, 32, 1, "#5a3420");
-          for (let i = 0; i < 3; i++) {
-            const col = ["#4ce07a", "#ff4a6a", "#5ac8ff", "#ffd23f", "#b98bff"][ri(5)];
-            const bx = X + (3 + i * 10) * h;
-            px(bx, Y + 9 * h, 5, 11, "#3a2030"); px(bx + h, Y + 10 * h, 3, 10, col); px(bx + h, Y + 10 * h, 1, 5, ramp(col, 2));
-            px(bx + 3 * h, Y + 12 * h, 1, 8, ramp(col, -2)); px(bx + h, Y + 6 * h, 3, 3, "#3a2030"); px(bx + 2 * h, Y + 7 * h, 1, 2, "#e0c08a");
-          }
-        }
-        if (y === 2) { px(X, Y + 26 * h, 32, 6, "#8a5a34"); px(X, Y + 26 * h, 32, 1, "#c08a50"); }
-      } else if ((x === 0 || x === W - 1) && y >= 3 && y <= H - 2) {
-        px(X, Y, 32, 32, "#8a5a34"); px(x === 0 ? X + 26 * h : X, Y, 6, 32, "#5a3420"); px(x === 0 ? X + 26 * h : X + 5 * h, Y, 1, 32, "#b07a44");
-      } else if (y === H - 2) {
-        px(X, Y, 32, 32, "#8a5a34"); px(X, Y, 32, 3, "#5a3420");
-      } else {
-        px(X, Y, 32, 32, "#2e2236");
-      }
-    }
-    const d = ROOMS.upgrades.door, DX = d.x * TS, DY = d.y * TS;
-    px(DX, DY, 32, 32, "#2a1a22"); px(DX - 2 * h, DY, 2, 32, "#b07a44"); px(DX + 32 * h, DY, 2, 32, "#b07a44");
-    px(DX + 2 * h, DY - 10 * h, 28, 8, "#b84a5a"); px(DX + 4 * h, DY - 8 * h, 24, 4, "#e87a8a"); px(DX + 6 * h, DY - 7 * h, 20, 1, "#ffd0a0");
-    g.font = `bold ${8 * h}px "Trebuchet MS", sans-serif`; g.textAlign = "center"; g.textBaseline = "middle";
-    g.fillStyle = "#fff0b0"; g.fillText("▼ MINE", DX + 16 * h, DY + 20 * h);
-  }, g => {
-    const rg = g.createRadialGradient(W / 2 * TS, 4 * TS, TS, W / 2 * TS, H / 2 * TS, 8.5 * TS);
-    rg.addColorStop(0, "rgba(255,220,150,0.18)"); rg.addColorStop(1, "rgba(60,20,40,0.28)");
-    g.fillStyle = rg; g.fillRect(TS, 3 * TS, (W - 2) * TS, (H - 5) * TS);
-  }),
 };
+
+// ---- Overworld room backgrounds (drawn on demand, a few kept in memory)
+function treeGrid() {
+  const g = newGrid(32);
+  rect(g, 14, 20, 17, 29, "T"); rect(g, 12, 28, 19, 29, "T");
+  ell(g, 16, 13, 11, 9, "L"); ell(g, 10, 15, 6, 5, "L"); ell(g, 22, 15, 6, 5, "L");
+  ell(g, 12, 9, 5, 4, "l"); ell(g, 19, 8, 4, 3, "l"); put(g, 9, 13, "l"); put(g, 23, 12, "l");
+  return g.map(r => r.join(""));
+}
+const TREE_ART = paint(treeGrid(), { K: "#1e2a1a", L: "#3f9a46", l: "#7ad060", T: "#7a4e2a" }, { passes: 0 });
+const worldBgCache = new Map();
+function worldRoomBg(rx, ry) {
+  const key = rx + "," + ry;
+  if (worldBgCache.has(key)) { const c = worldBgCache.get(key); worldBgCache.delete(key); worldBgCache.set(key, c); return c; }
+  const ox = rx * W, oy = ry * H;
+  const c = makeBg((g, px, h, ri, rnd) => {
+    const tl = (gx, gy) => worldTile(gx, gy);
+    const over = [];
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const gx = ox + x, gy = oy + y, t = tl(gx, gy), X = x * TS, Y = y * TS;
+      const grassBase = ["#6cbf4f", "#66b84a", "#72c455"][Math.floor(hash2(gx, gy, 3) * 3)];
+      if (t === "water") {
+        px(X, Y, 32, 32, "#4a9ee0");
+        for (let i = 0; i < 3; i++) px(X + Math.floor(hash2(gx, gy, 10 + i) * 24) * h, Y + Math.floor(hash2(gx, gy, 20 + i) * 28) * h, 6, 1, "#8fd0ff");
+        const shore = "#b8e8ff";
+        if (tl(gx, gy - 1) !== "water") px(X, Y, 32, 2, shore);
+        if (tl(gx, gy + 1) !== "water") px(X, Y + 30 * h, 32, 2, "#2a6ab0");
+        if (tl(gx - 1, gy) !== "water") px(X, Y, 2, 32, shore);
+        if (tl(gx + 1, gy) !== "water") px(X + 30 * h, Y, 2, 32, "#2a6ab0");
+        continue;
+      }
+      if (t === "path") {
+        px(X, Y, 32, 32, "#cfa66c");
+        for (let i = 0; i < 6; i++) px(X + ri(30) * h, Y + ri(30) * h, 2, 1, rnd() < .5 ? "#b08a54" : "#e0c08a");
+        continue;
+      }
+      if (t === "cliff" || t === "cave") {
+        px(X, Y, 32, 32, "#8a8090");
+        for (const by of [0, 16]) { px(X, Y + by * h, 32, 2, "#a8a0b0"); px(X, Y + (by + 14) * h, 32, 2, "#5e5868"); }
+        px(X + ((gx + gy) % 2 ? 0 : 16) * h, Y, 1, 16, "#5e5868"); px(X + ((gx + gy) % 2 ? 16 : 0) * h, Y + 16 * h, 1, 16, "#5e5868");
+        if (t === "cave") {
+          px(X + 2 * h, Y + 4 * h, 28, 28, "#3a3040"); px(X + 4 * h, Y + 6 * h, 24, 26, "#120c16");
+          px(X + 6 * h, Y + 2 * h, 20, 4, "#3a3040");
+        }
+        continue;
+      }
+      px(X, Y, 32, 32, grassBase);                               // grass (also under trees, flowers, house)
+      for (let i = 0; i < 5; i++) { const bx = X + ri(30) * h, by = Y + ri(28) * h; px(bx, by, 1, 3, rnd() < .5 ? "#4f9a3c" : "#8ad86a"); }
+      if (t === "flower") {
+        const fc = ["#ffffff", "#ffe070", "#ff8ab0", "#b0a0ff"][Math.floor(hash2(gx, gy, 5) * 4)];
+        for (let i = 0; i < 3; i++) { const bx = X + ri(26) * h + 2 * h, by = Y + ri(26) * h + 2 * h; px(bx, by, 2, 2, fc); px(bx + h / 2, by + h / 2, 1, 1, "#ffb030"); }
+      }
+      if (t === "tree") over.push(() => g.drawImage(TREE_ART, X - TS * .15, Y - TS * .45, TS * 1.3, TS * 1.3));
+      if (t === "boulder") over.push(() => g.drawImage(rockSprite(1, 0), X, Y, TS, TS));
+    }
+    over.forEach(f => f());
+    // the cottage at home base
+    if (rx === HOME_ROOM.rx && ry === HOME_ROOM.ry) {
+      const X0 = (HOUSE.x - ox) * TS, Yt = (HOUSE.y - oy - 1) * TS;
+      g.fillStyle = "rgba(30,20,40,.25)"; g.fillRect(X0 + 4 * h, Yt + 88 * h, 92 * h, 6 * h);
+      px(X0 + 6 * h, Yt + 40 * h, 84, 52, "#d8b07a");
+      for (let i = 0; i < 9; i++) px(X0 + 6 * h, Yt + (44 + i * 6) * h, 84, 1, "#b08a54");
+      px(X0 + 68 * h, Yt + 6 * h, 10, 24, "#8a6a5a"); px(X0 + 66 * h, Yt + 4 * h, 14, 4, "#5e4a40");
+      g.fillStyle = "#c84a3a"; g.beginPath(); g.moveTo(X0, Yt + 46 * h); g.lineTo(X0 + 48 * h, Yt + 8 * h); g.lineTo(X0 + 96 * h, Yt + 46 * h); g.closePath(); g.fill();
+      g.strokeStyle = "#7a2a24"; g.lineWidth = 2 * h; g.stroke();
+      g.strokeStyle = "rgba(255,200,180,.35)"; g.lineWidth = h;
+      for (let i = 1; i < 5; i++) { g.beginPath(); g.moveTo(X0 + 48 * h - i * 9 * h, Yt + (8 + i * 7.6) * h); g.lineTo(X0 + 48 * h + i * 9 * h, Yt + (8 + i * 7.6) * h); g.stroke(); }
+      px(X0 + 42 * h, Yt + 62 * h, 12, 30, "#7a4a2a"); px(X0 + 51 * h, Yt + 77 * h, 2, 2, "#ffd860");
+      for (const wx of [16, 66]) { px(X0 + wx * h, Yt + 56 * h, 14, 12, "#5a3a24"); px(X0 + (wx + 2) * h, Yt + 58 * h, 10, 8, "#8fd0ff"); px(X0 + (wx + 6) * h, Yt + 58 * h, 2, 8, "#5a3a24"); }
+    }
+    // signposts
+    const sign = (gx, gy, text) => {
+      if (Math.floor(gx / W) !== rx || Math.floor(gy / H) !== ry) return;
+      const X = (gx - ox) * TS, Y = (gy - oy) * TS;
+      px(X + 14 * h, Y + 12 * h, 4, 20, "#6a4024");
+      g.font = `bold ${9 * h}px "Trebuchet MS", sans-serif`; g.textAlign = "center"; g.textBaseline = "middle";
+      const tw = g.measureText(text).width + 8 * h;
+      g.fillStyle = "#8a5a34"; g.fillRect(X + 16 * h - tw / 2, Y + 2 * h, tw, 13 * h);
+      g.fillStyle = "#b07a44"; g.fillRect(X + 16 * h - tw / 2, Y + 2 * h, tw, 2 * h);
+      g.fillStyle = "#fff0b0"; g.fillText(text, X + 16 * h, Y + 9 * h);
+    };
+    sign(HOME.x + 2, HOUSE.y + 2, "HOME");
+    sign(STATIONS[1].x, STATIONS[1].y - 2, "SHOP");
+    sign(CAVE.x + 3, CAVE.y + 1, "MINE");
+  }, g => {
+    const rg = g.createLinearGradient(0, 0, W * TS, H * TS);
+    rg.addColorStop(0, "rgba(255,240,180,0.10)"); rg.addColorStop(1, "rgba(40,30,80,0.12)");
+    g.fillStyle = rg; g.fillRect(0, 0, W * TS, H * TS);
+  }, 1000 + rx * 977 + ry * 131);
+  worldBgCache.set(key, c);
+  if (worldBgCache.size > 6) worldBgCache.delete(worldBgCache.keys().next().value);
+  return c;
+}
 
 // Station sprites, drawn natively on the 32x32 grid
 function anvilGrid() {
@@ -1674,7 +1810,7 @@ function onResult(r) {
     if (pl.room === myRoom()) floaters.push({ x: (pl.x + .5) * TS, y: pl.y * TS - 20, t0: tnow, text: `-${h.dmg}`, color: "#ff6a6a" });
   }
   if (r.hitEnemy) enemyFlash[r.hitEnemy] = tnow;
-  if (r.weapon) swingWeapon[r.seat] = r.weapon; else if (r.fx && r.fx.room === "mine") swingWeapon[r.seat] = "pick";
+  if (r.weapon) swingWeapon[r.seat] = r.weapon; else if (r.fx && isMine(r.fx.room)) swingWeapon[r.seat] = "pick";
   if (r.quiet) {
     if (r.fx) { swing[r.seat] = tnow; if (r.fx.room === myRoom()) floaters.push({ x: (r.fx.x + .5) * TS, y: r.fx.y * TS, t0: tnow + 200, text: r.fx.label, color: r.fx.color }); }
     return;
@@ -1682,10 +1818,10 @@ function onResult(r) {
   showResult(r);
   const t0 = performance.now();
   if (r.seat != null && /reached Miner level|Pickaxe!|forged/.test(r.text || "")) anim[r.seat] = { type: "wave", from: t0 + 500, until: t0 + 2200 };
-  else if (r.fx && r.fx.room === "mine" && !r.ok) anim[r.seat] = { type: "hurt", from: t0 + 480, until: t0 + 1000 };
+  else if (r.fx && isMine(r.fx.room) && !r.ok) anim[r.seat] = { type: "hurt", from: t0 + 480, until: t0 + 1000 };
   if (/joined the mine/.test(r.text || "")) { anim[0] = anim[1] = { type: "wave", from: t0, until: t0 + 1600 }; }
   if (r.fx) {
-    if (r.fx.room === "mine") swing[r.seat] = performance.now();
+    if (isMine(r.fx.room)) swing[r.seat] = performance.now();
     setTimeout(() => {
       if (r.fx.room !== myRoom()) return;   // only show effects in the room you're in
       const cx = (r.fx.x + .5) * TS, cy = (r.fx.y + .5) * TS;
@@ -1694,7 +1830,7 @@ function onResult(r) {
         x: cx, y: cy, vx: (Math.random() - .5) * 7, vy: -Math.random() * 7 - 1, life: 1,
         color: r.ok ? (i % 3 ? r.fx.color : "#6f6a64") : "#cfc7bb", size: S * (r.ok ? 1.5 : 1) });
       floaters.push({ x: cx, y: cy - TS * .4, t0: performance.now(), text: r.fx.label, color: r.ok ? "#ffd23f" : "#e0675a" });
-    }, r.fx.room === "mine" ? 220 : 0);
+    }, isMine(r.fx.room) ? 220 : 0);
   }
 }
 
@@ -1707,9 +1843,10 @@ function floatText(text, color) {
 function facing() {
   const me = state.players[net.seat], [dx, dy] = DIRS[me.dir || "down"];
   const x = me.x + dx, y = me.y + dy;
-  if (me.room === "mine") {
-    const e = enemyAt(state, x, y); if (e) return { kind: "enemy", enemy: e };
-    const r = rockAt(state, x, y); return r ? { kind: "rock", rock: r } : null;
+  if (isMine(me.room)) {
+    const L = levelOf(me.room);
+    const e = enemyAt(L, x, y); if (e) return { kind: "enemy", enemy: e };
+    const r = rockAt(L, x, y); return r ? { kind: "rock", rock: r } : null;
   }
   const st = stationAt(x, y); return st ? { kind: "station", station: st } : null;
 }
@@ -1758,6 +1895,41 @@ function drawStation(st, now) {
                                   life: .6, color: "#ffb02e", size: S / 2 });
   }
   drawLabel(st.name, X + TS / 2, Y + TS + 8 * Math.min(ui, 1.3), "#ffe08a", 12);
+}
+
+let lastViewKey = "", fadeAt = 0, lastPanel = 0;
+function drawTunnel(t, now) {
+  const cx = (t.x + .5) * TS, cy = (t.y + .55) * TS;
+  ctx.fillStyle = "#3a2a30"; ctx.beginPath(); ctx.ellipse(cx, cy, TS * .46, TS * .34, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#0c0810"; ctx.beginPath(); ctx.ellipse(cx, cy + 2, TS * .38, TS * .27, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = "#7a4e2a"; ctx.lineWidth = 3;
+  for (const dx of [-7, 7]) { ctx.beginPath(); ctx.moveTo(cx + dx, cy - 10); ctx.lineTo(cx + dx, cy + 10); ctx.stroke(); }
+  for (let i = -1; i <= 1; i++) { ctx.beginPath(); ctx.moveTo(cx - 7, cy + i * 6); ctx.lineTo(cx + 7, cy + i * 6); ctx.stroke(); }
+  if (Math.random() < .15) particles.push({ x: cx + (Math.random() - .5) * 30, y: cy, vx: 0, vy: -.6, life: .7, color: "#b98bff", size: S / 2 });
+  drawLabel("▼ deeper", cx, cy - TS * .6, "#c8b0ff", 11);
+}
+const mm = document.getElementById("minimap"), mmx = mm.getContext("2d");
+let mmAt = 0;
+function drawMinimap(now) {
+  if (now - mmAt < 200) return; mmAt = now;
+  const me = state.players[net.seat], other = state.players[1 - net.seat], N = mm.width, c = N / WR;
+  mmx.clearRect(0, 0, N, N);
+  if (me.room !== "world") {
+    mmx.fillStyle = "#1a1020"; mmx.fillRect(0, 0, N, N);
+    mmx.fillStyle = "#ffe08a"; mmx.font = "bold 13px sans-serif"; mmx.textAlign = "center";
+    mmx.fillText("⛏ MINE", N / 2, N / 2 - 8); mmx.fillText(`Depth ${depthOf(me.room)}`, N / 2, N / 2 + 10);
+    return;
+  }
+  for (let ry = 0; ry < WR; ry++) for (let rx = 0; rx < WR; rx++) {
+    const water = vnoise((rx * W + 7) / 7, (ry * H + 7) / 7) > 0.74;
+    mmx.fillStyle = rx === HOME_ROOM.rx && ry === HOME_ROOM.ry ? "#ffd860" : rx === SHOP_ROOM.rx && ry === SHOP_ROOM.ry ? "#f08a3a"
+      : rx === CAVE_ROOM.rx && ry === CAVE_ROOM.ry ? "#8a8090" : water ? "#4a9ee0" : (rx + ry) % 2 ? "#5aa84a" : "#62b252";
+    mmx.fillRect(rx * c, ry * c, c, c);
+  }
+  mmx.strokeStyle = "#ffffff"; mmx.lineWidth = 1.5; mmx.strokeRect(Math.floor(me.x / W) * c + .5, Math.floor(me.y / H) * c + .5, c - 1, c - 1);
+  const dot = (p, col) => { mmx.fillStyle = col; mmx.beginPath(); mmx.arc(p.fx / WT * N, p.fy / WT * N, 2.5, 0, Math.PI * 2); mmx.fill(); };
+  if (net.connected && other.room === "world") dot(other, "#ffb08a");
+  dot(me, "#8fd0ff");
 }
 
 function drawEnemy(e, now) {
@@ -1861,8 +2033,9 @@ function drawTooltip() {
   ctx.font = `bold ${fs}px "Trebuchet MS", sans-serif`;
   const w = Math.max(...lines.map(l => ctx.measureText(l[0]).width)) + 18, h = lines.length * lh + 10;
   let x = (tx + .5) * TS - w / 2, y = ty * TS - h - 8;
-  x = Math.max(view.x + 4, Math.min(view.x + view.w - w - 4, x));
-  if (y < view.y + 4) y = (ty + 1) * TS + 14 * Math.min(ui, 1.3);
+  const vx0 = view.x + org.x * TS, vy0 = view.y + org.y * TS;
+  x = Math.max(vx0 + 4, Math.min(vx0 + view.w - w - 4, x));
+  if (y < vy0 + 4) y = (ty + 1) * TS + 14 * Math.min(ui, 1.3);
   const grad = ctx.createLinearGradient(0, y, 0, y + h);
   grad.addColorStop(0, "#4a62b8"); grad.addColorStop(1, "#22307a");
   roundRect(x, y, w, h, 5); ctx.fillStyle = grad; ctx.fill();
@@ -1876,6 +2049,12 @@ function frame(now) {
   const dt = Math.min(0.05, Math.max(0, (now - (lastFrame || now)) / 1000)); lastFrame = now;
   if (state && net.code) {
     stepInput(now, dt);
+    {   // which room is on screen? (overworld: the 15x15 screen you're standing in)
+      const me = state.players[net.seat];
+      if (me.room === "world") { org.x = Math.floor(me.x / W) * W; org.y = Math.floor(me.y / H) * H; } else { org.x = org.y = 0; }
+      const vk = me.room === "world" ? `w${org.x},${org.y}` : me.room;
+      if (vk !== lastViewKey) { lastViewKey = vk; fadeAt = now; particles = []; }
+    }
     for (let i = 0; i < 2; i++) {
       const p = state.players[i], d = disp[i], tx = p.fx ?? p.x, ty = p.fy ?? p.y;
       const ox = d.x, oy = d.y;
@@ -1888,19 +2067,27 @@ function frame(now) {
     if (actQueued && now >= actReady) { actQueued = false; act(); }            // buffered tap
     else if (actHeld && !menuOpen && now >= actReady) { const f = facing(); if (f && f.kind !== "station") act(); }   // hold to keep swinging
     updateView();
-    const room = myRoom();
-    ctx.drawImage(backgrounds[room], 0, 0, W * TS, H * TS);
+    const room = myRoom(), meP = state.players[net.seat], L = levelOf(room);
+    ctx.save(); ctx.translate(-org.x * TS, -org.y * TS);
+    if (room === "world") ctx.drawImage(worldRoomBg(org.x / W, org.y / H), org.x * TS, org.y * TS, W * TS, H * TS);
+    else {
+      ctx.drawImage(backgrounds.mine, 0, 0, W * TS, H * TS);
+      const dd = depthOf(room);
+      if (dd > 1) { ctx.fillStyle = `rgba(20,10,40,${Math.min(0.4, 0.05 * (dd - 1))})`; ctx.fillRect(0, 0, W * TS, H * TS); }   // deeper = darker
+      drawLabel(`Depth ${dd}`, 2.2 * TS, 1.5 * TS, "#ffe08a", 13);
+      if (L.tunnel) drawTunnel(L.tunnel, now);
+    }
 
     const things = [];
-    if (room === "mine") {
+    if (isMine(room)) {
       for (const tx of TORCHES) {
         const f = Math.random();
         ctx.fillStyle = "rgba(255,180,80,0.22)"; ctx.beginPath(); ctx.arc(tx * TS + 8 * S, TS + 3 * S, 46 + f * 6, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = f < .5 ? "#ffb02e" : "#ff7a1a"; ctx.fillRect(tx * TS + 6 * S, TS + 1 * S, 4 * S, 4 * S);
         ctx.fillStyle = "#fff1a8"; ctx.fillRect(tx * TS + 7 * S, TS + (2 + (f < .3 ? 1 : 0)) * S, 2 * S, 2 * S);
       }
-      state.rocks.forEach(r => things.push({ y: r.y, draw: () => drawRock(r, now) }));
-      for (const e of state.enemies) {
+      L.rocks.forEach(r => things.push({ y: r.y, draw: () => drawRock(r, now) }));
+      for (const e of L.enemies) {
         if (!enemyDisp[e.id]) {                                  // new arrival: puff of dust
           enemyDisp[e.id] = { x: e.x, y: e.y };
           for (let i = 0; i < 14; i++) particles.push({ x: (e.x + .5) * TS, y: (e.y + .7) * TS, vx: (Math.random() - .5) * 5, vy: -Math.random() * 4,
@@ -1912,9 +2099,10 @@ function frame(now) {
         things.push({ y: d.y + 0.005, draw: () => drawEnemy(e, now) });
       }
     } else {
-      STATIONS.forEach(st => things.push({ y: st.y, draw: () => drawStation(st, now) }));
+      STATIONS.filter(st => inRoom(st.x, st.y, { rx: org.x / W, ry: org.y / H }))
+        .forEach(st => things.push({ y: st.y, draw: () => drawStation(st, now) }));
     }
-    [0, 1].forEach(i => { if (state.players[i].room === room) things.push({ y: disp[i].y + 0.01, draw: () => drawPlayer(i, now) }); });
+    [0, 1].forEach(i => { if (i === net.seat || sameView(state.players[i], meP)) things.push({ y: disp[i].y + 0.01, draw: () => drawPlayer(i, now) }); });
     things.sort((a, b) => a.y - b.y).forEach(t => t.draw());
 
     particles = particles.filter(p => p.life > 0);
@@ -1930,11 +2118,15 @@ function frame(now) {
     }
     ctx.globalAlpha = 1;
     drawTooltip();
+    ctx.restore();
+    if (now - fadeAt < 240) { ctx.fillStyle = `rgba(10,8,24,${1 - (now - fadeAt) / 240})`; ctx.fillRect(0, 0, W * TS, H * TS); }   // room change fade
+    drawMinimap(now);
+    if (now - lastPanel > 500) { lastPanel = now; render(); }   // keep "where is everyone" text fresh
     vctx.drawImage(world, view.x * K, view.y * K, view.w * K, view.h * K, 0, 0, canvas.width, canvas.height);
     updateActButton();
     if (menuOpen) {   // walked (or got moved) away from the station → close its menu
       const st = STATIONS.find(x => x.id === menuOpen), me = state.players[net.seat];
-      if (me.room !== "upgrades" || !adjacent(me, st)) closeMenu();
+      if (me.room !== "world" || !adjacent(me, st)) closeMenu();
     }
   }
   requestAnimationFrame(frame);
@@ -1949,14 +2141,16 @@ function inGame() { return net.code && !document.getElementById("game").classLis
 function pressDir(d) { if (menuOpen) closeMenu(); if (!held.includes(d)) { held.push(d); nextStep = 0; } }
 function releaseDir(d) { const i = held.indexOf(d); if (i >= 0) held.splice(i, 1); }
 
-function changeRoom(to) {
-  const me = state.players[net.seat], a = ARRIVE[to];
-  Object.assign(me, { room: to, x: a.x, y: a.y, fx: a.x, fy: a.y, dir: a.dir });
-  disp[net.seat].x = a.x; disp[net.seat].y = a.y; lastRoom[net.seat] = to;
+let doorLock = 0;   // after changing place, ignore doorways briefly so a held key doesn't bounce you straight back
+function goTo(room, x, y, dir) {
+  const me = state.players[net.seat];
+  doorLock = performance.now() + 900;
+  if (isMine(room) && net.isHost) { mineLevel(depthOf(room)); simDirty = true; }
+  Object.assign(me, { room, x, y, fx: x, fy: y, dir });
+  disp[net.seat].x = x; disp[net.seat].y = y; lastRoom[net.seat] = room;
   particles = []; floaters = [];
-  sendMove(); render();
-  closeMenu();
-  if (to === "upgrades") floaters.push({ x: W / 2 * TS, y: 2.2 * TS, t0: performance.now(), text: "Upgrades room", color: "#ffe08a" });
+  sendMove(); render(); closeMenu();
+  floaters.push({ x: (x + .5) * TS, y: (y - .6) * TS, t0: performance.now(), text: isMine(room) ? `Depth ${depthOf(room)}` : "Outside", color: "#ffe08a" });
 }
 
 // Free movement: positions are in tile units (fx, fy = the tile centre you're nearest when whole).
@@ -1984,13 +2178,19 @@ function stepInput(now, dt) {
     if (!vx && !vy) return maybeSendMove(now);
     const len = Math.hypot(vx, vy); vx /= len; vy /= len;
   }
-  // walking into a doorway switches rooms
-  const door = ROOMS[me.room].door, near = { x: Math.round(me.fx + vx * 0.55), y: Math.round(me.fy + vy * 0.55) };
-  if (near.x === door.x && near.y === door.y && Math.abs(me.fx - door.x) < 0.45 + Math.abs(vx) && Math.abs(me.fy - door.y) < 1.2) return changeRoom(door.to);
+  // walking into the cave mouth / the ladder moves you between the overworld and the mine levels
+  const near = { x: Math.round(me.fx + vx * 0.55), y: Math.round(me.fy + vy * 0.55) };
+  const door = me.room === "world" ? CAVE : ROOMS.mine.door;
+  if (now > doorLock && near.x === door.x && near.y === door.y && Math.abs(me.fx - door.x) < 0.45 + Math.abs(vx) && Math.abs(me.fy - door.y) < 1.2) {
+    if (me.room === "world") return goTo("mine:1", MINE_ARRIVE.x, MINE_ARRIVE.y, "down");
+    const d = depthOf(me.room);
+    return d <= 1 ? goTo("world", CAVE_EXIT.x, CAVE_EXIT.y, "down") : goTo("mine:" + (d - 1), MINE_ARRIVE.x, MINE_ARRIVE.y, "down");
+  }
   // tiles that block you (enemies you're already touching don't trap you)
   const touching = new Set(boxTiles(me.fx, me.fy).map(t => t.join()));
+  const LV = levelOf(me.room);
   const blocked = (tx, ty) => !walkable(state, me.room, tx, ty) ||
-    (me.room === "mine" && enemyAt(state, tx, ty) && !touching.has(tx + "," + ty));
+    (isMine(me.room) && enemyAt(LV, tx, ty) && !touching.has(tx + "," + ty));
   const free = (fx, fy) => boxTiles(fx, fy).every(([tx, ty]) => !blocked(tx, ty));
   const step = WALK_SPEED * pace * dt;
   let nx = me.fx + vx * step, ny = me.fy + vy * step;
@@ -2000,6 +2200,8 @@ function stepInput(now, dt) {
   if (free(nx, me.fy)) me.fx = nx;
   if (free(me.fx, ny)) me.fy = ny;
   me.x = Math.round(me.fx); me.y = Math.round(me.fy);
+  if (now > doorLock && isMine(me.room) && LV.tunnel && Math.hypot(me.fx - LV.tunnel.x, me.fy - LV.tunnel.y) < 0.4)   // drop down the tunnel
+    return goTo("mine:" + (LV.depth + 1), MINE_ARRIVE.x, MINE_ARRIVE.y, "down");
   maybeSendMove(now);
 }
 function maybeSendMove(now) {
@@ -2012,7 +2214,7 @@ function act(target) {
   const me = state.players[net.seat];
   const f = target || facing();
   if (me.ko) return;
-  if (!f) return floatText(me.room === "mine" ? "Face a rock or enemy" : "Face the cart, forge or anvil", "#a8977c");
+  if (!f) return floatText(isMine(me.room) ? "Face a rock or enemy" : "Explore! Face the cart, forge or anvil to use them", "#a8977c");
   if (f.kind === "station") return openMenu(f.station.id);
   if (!net.connected) return floatText("Waiting for your friend", "#a8977c");
   const tnow = performance.now();
@@ -2049,7 +2251,7 @@ function renderMenu() {
   const el = document.getElementById("menu");
   if (!menuOpen || !state) return el.classList.add("hidden");
   const me = state.players[net.seat];
-  if (me.room !== "upgrades") return closeMenu();
+  if (me.room !== "world") return closeMenu();
   el.classList.remove("hidden");
   const myTurn = net.connected;
   const st = STATIONS.find(s => s.id === menuOpen), sh = stash();
@@ -2113,7 +2315,7 @@ document.getElementById("menu").addEventListener("click", e => {
 let actLabel = "";
 function updateActButton() {
   const f = state && facing();
-  const label = myRoom() === "upgrades" ? "✋<br>Use" : f && f.kind === "enemy" ? "🗡️<br>Attack" : "⛏️<br>Mine";
+  const label = myRoom() === "world" ? "✋<br>Use" : f && f.kind === "enemy" ? "🗡️<br>Attack" : "⛏️<br>Mine";
   if (label !== actLabel) { document.getElementById("act-btn").innerHTML = label; actLabel = label; }
 }
 
@@ -2135,11 +2337,11 @@ canvas.addEventListener("pointerdown", e => {
   const r = canvas.getBoundingClientRect();
   const sc = Math.min(r.width / canvas.width, r.height / canvas.height);
   const ox = r.left + (r.width - canvas.width * sc) / 2, oy = r.top + (r.height - canvas.height * sc) / 2;
-  const tx = Math.floor((view.x + (e.clientX - ox) / sc / K) / TS), ty = Math.floor((view.y + (e.clientY - oy) / sc / K) / TS);
+  const tx = Math.floor((view.x + (e.clientX - ox) / sc / K) / TS) + org.x, ty = Math.floor((view.y + (e.clientY - oy) / sc / K) / TS) + org.y;
   const me = state.players[net.seat];
   let target = null;
-  if (me.room === "mine") {
-    const e = enemyAt(state, tx, ty), rock = rockAt(state, tx, ty);
+  if (isMine(me.room)) {
+    const LV = levelOf(me.room), e = enemyAt(LV, tx, ty), rock = rockAt(LV, tx, ty);
     if (e) target = { kind: "enemy", enemy: e, x: tx, y: ty };
     else if (rock) target = { kind: "rock", rock, x: tx, y: ty };
   }
@@ -2376,6 +2578,14 @@ function showResult(r, ms = 4500) {
   toastTimer = setTimeout(() => el.classList.add("fade"), ms);
 }
 
+function locName(p) {
+  if (p.ko) return "knocked out";
+  if (isMine(p.room)) return `in the mine (depth ${depthOf(p.room)})`;
+  if (inRoom(p.x, p.y, HOME_ROOM)) return "at home base";
+  if (inRoom(p.x, p.y, SHOP_ROOM)) return "at the shop";
+  if (inRoom(p.x, p.y, CAVE_ROOM)) return "by the mine entrance";
+  const r = roomIdx(p); return `exploring (${r.rx + 1}, ${r.ry + 1})`;
+}
 function buffs(p) {
   return [p.charm ? `🍀${p.charm}` : "", p.dynamite ? `🧨${p.dynamite}` : ""].filter(Boolean).join(" ");
 }
@@ -2389,7 +2599,7 @@ function renderPlayer(i) {
   const waiting = i === 1 && net.isHost && !net.connected;
   el.innerHTML = `
     <div class="phead">
-      <span class="pname">${escapeHtml(waiting ? "Waiting for player…" : p.name)}<small>${mine ? "(you)" : ""}${i === 0 ? " · host" : ""} · ${p.ko ? "knocked out" : p.room === "mine" ? "in the mine" : "in Upgrades"}</small></span>
+      <span class="pname">${escapeHtml(waiting ? "Waiting for player…" : p.name)}<small>${mine ? "(you)" : ""}${i === 0 ? " · host" : ""} · ${locName(p)}</small></span>
     </div>
     <div class="stats">
       <div class="stat"><small>Health</small><b>❤️ ${p.hp}/${maxHp(p)}</b><div class="bar"><i style="width:${hpPct}%;background:#6ae07a"></i></div></div>
@@ -2433,10 +2643,10 @@ function renderHud() {
     (buffs(me) ? `<span>${buffs(me)}</span>` : "");
   const el = document.getElementById("turn-line");
   if (!net.connected) { el.textContent = "Waiting for your teammate"; return; }
-  const foes = state.enemies.length;
-  if (me.ko) el.innerHTML = `<span style="color:var(--bad)">Knocked out!</span> Waking up in the Upgrades room…`;
-  else el.innerHTML = `🤝 ${escapeHtml(other.name)} is ${other.ko ? "knocked out" : other.room === "mine" ? "in the mine" : "in Upgrades"}` +
-    (foes ? ` · <span style="color:var(--bad)">⚔️ ${foes} enem${foes > 1 ? "ies" : "y"} in the mine</span>` : "");
+  const foes = levelOf(me.room).enemies.length;
+  if (me.ko) el.innerHTML = `<span style="color:var(--bad)">Knocked out!</span> Waking up at home base…`;
+  else el.innerHTML = `🤝 ${escapeHtml(other.name)} is ${locName(other)}` +
+    (foes ? ` · <span style="color:var(--bad)">⚔️ ${foes} enem${foes > 1 ? "ies" : "y"} here</span>` : "");
 }
 
 function render() {
