@@ -313,7 +313,7 @@
 // ================= Version & fresh assets =================
 // BUILD changes with every release. Asset URLs carry it, so phones can't keep showing stale images,
 // and on load we check whether the server has a newer build than the one running.
-const BUILD = "2026.11.01-1605";
+const BUILD = "2026.11.01-1610";
 const withV = url => /^(https?:|data:|blob:)/.test(url) ? url : url + (url.includes("?") ? "&" : "?") + "v=" + BUILD;
 async function checkForUpdate() {
   try {
@@ -1707,6 +1707,8 @@ const worldBgCache = new Map();
 const WORLD_TEX = {};
 Promise.all([loadImage("sprites/tiles/grass-bg.png"), loadImage("sprites/tiles/brick-path.png")])
   .then(([grass, brick]) => { WORLD_TEX.grass = grass; WORLD_TEX.brick = brick; worldBgCache.clear(); }).catch(() => {});
+loadImage("sprites/tiles/broken-path.png")                  // "Broken Path": ~10% of brick tiles, picked by position
+  .then(im => { WORLD_TEX.broken = im; worldBgCache.clear(); }).catch(() => {});
 function worldRoomBg(rx, ry) {
   const key = rx + "," + ry;
   if (worldBgCache.has(key)) { const c = worldBgCache.get(key); worldBgCache.delete(key); worldBgCache.set(key, c); return c; }
@@ -1732,7 +1734,8 @@ function worldRoomBg(rx, ry) {
         continue;
       }
       if (t === "path" && tex) {
-        g.drawImage(WORLD_TEX.brick, X, Y, TS, TS);
+        const broken = WORLD_TEX.broken && hash2(gx, gy, 41) < 0.1;
+        g.drawImage(broken ? WORLD_TEX.broken : WORLD_TEX.brick, X, Y, TS, TS);
         const edge = "rgba(20,30,10,0.35)";                    // soft shadow where bricks meet grass
         if (tl(gx, gy - 1) !== "path") px(X, Y, 32, 2, edge);
         if (tl(gx, gy + 1) !== "path") px(X, Y + 30 * h, 32, 2, edge);
