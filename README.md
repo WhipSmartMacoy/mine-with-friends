@@ -13,7 +13,7 @@ Players connect directly browser-to-browser (via [PeerJS](https://peerjs.com)), 
 ## How to play
 **Co-op, real time.** There are no turns — both players play at the same time as a team. Gold, ore and bars go into one **team stash** you both spend from.
 
-- **Walk** freely with WASD / arrow keys (diagonals too), or the on-screen pad on phones. **Hold** Space / the action button to keep swinging. Two rooms: the **mine** and the **Upgrades room** (walk through the UPGRADES / MINE doors).
+- **Walk** freely with WASD / arrow keys (diagonals too), or drag the on-screen joystick on phones. **Hold** Space / the action button to keep swinging. Two rooms: the **mine** and the **Upgrades room** (walk through the UPGRADES / MINE doors).
 - **Mine** (mine): face a rock and press **Space** / tap **Mine**. Rocks are levels 1–10; green badges are ones you can mine. Success gives gold, XP and ore. A miss cracks the rock (easier next time) — and **may disturb an enemy**. Enemies also creep in on their own every so often while someone's in the mine.
 - **Fight**: face an enemy and press **Space** / tap **Attack** to strike with your dagger. Enemies get tougher in deeper rock:
   - 🟢 **Pebble Slime** (levels 1–3) · 🦇 **Cave Bat** (4–6, fast) · 💎 **Crystal Golem** (7–10, tough)
