@@ -32,7 +32,7 @@ Players connect directly browser-to-browser (via [PeerJS](https://peerjs.com)), 
 - **Shop**: Forge (2 ore + 1 Coal → 1 bar), Anvil (forge your next **pickaxe** from bars + a handle, or **dagger** from bars), Workbench (Wood → handles), Cart (🧪 Potion, 🥪 Lunch, 🍀 Charm, 🧨 Dynamite, 🪨 Coal, 🎒 Bigger Backpack).
 - **Backpack** 🎒: tap **Bag** on the health bar (or press **B** / **I**). It starts at 3×3 slots and grows up to 5×5 with Bigger Backpack upgrades from the cart. Potions, lunches, charms and dynamite go here; tap an item to **Use** or **Drop** it.
 - **Forests & wood** 🌲: thick pine woods grow north of town (and in patches across the map). Face a tree and press Space / tap **Chop** for 🪵 Wood; sometimes it falls ("Timber!") and leaves a stump that regrows in a few minutes.
-- **Workbench** 🪚 (shop, far right): carve 3 Wood into a pickaxe handle. **Every new pickaxe needs a handle** (two from Gold tier up) plus its bars.
+- **Workbench** 🪚 (shop, far right): carve 3 Wood into a pickaxe handle. **Every new pickaxe needs handles**: 1 up to Iron, 2 for Silver–Ruby, 3 for Diamond and Mythril plus its bars.
 - **Quests** 📜: talk to the town folk (face them and press Space / tap Use). A gold **!** means a new quest, **?** means it's ready to hand in. Quests are shared by the team, and both players get the XP.
   - ⚔️ **Captain Brea** (home base): defeat a number of monsters, sometimes a specific kind.
   - 👑 **Old Moss** (mine entrance): hunt a boss (Slime King, Bat Matriarch, Stone Colossus) that appears at a given depth once accepted.
