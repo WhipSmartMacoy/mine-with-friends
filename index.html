@@ -1264,19 +1264,15 @@ function setViewMode(m) {
 
 const TORCHES = [4, 12, 15];
 
-function makeBg(drawTile) {
+function makeBg(drawTile, lighting) {
   const c = mkCanvas(W * TS * K, H * TS * K), g = c.getContext("2d");
   g.setTransform(K, 0, 0, K, 0, 0);
   let seed = 12345; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   const h = S / 2;   // one 32-res art pixel, in world units
   const px = (x, y, w, hh, col) => { g.fillStyle = col; g.fillRect(x, y, w * h, hh * h); };
   drawTile(g, px, h, n => Math.floor(rnd() * n), rnd);
-  // grain: single art-pixel flecks of light and shadow across every tile
-  const q = S / 2;
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) for (let i = 0; i < 24; i++) {
-    g.fillStyle = rnd() < .5 ? "rgba(0,0,0,0.16)" : "rgba(255,240,210,0.06)";
-    g.fillRect(x * TS + Math.floor(rnd() * 32) * q, y * TS + Math.floor(rnd() * 32) * q, q, q);
-  }
+  // 32-bit style lighting: smooth gradients instead of noise
+  if (lighting) lighting(g);
   return c;
 }
 
@@ -1285,31 +1281,22 @@ const backgrounds = {
     const inside = ROOMS.mine.inside;
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const X = x * TS, Y = y * TS;
-      if (inside(x, y)) {                                   // warm earthen cave floor
-        const base = ["#a8805a", "#a27a54", "#ae8660"][ri(3)];
+      if (inside(x, y)) {                                   // clean earthen floor tiles
+        const base = (x + y) % 2 ? "#a8805a" : "#a47c56";
         px(X, Y, 32, 32, base);
-        if (rnd() < .5) { const bx = ri(20), by = ri(22); px(X + bx * h, Y + by * h, 10 + ri(4), 6 + ri(3), ramp(base, 1)); px(X + bx * h, Y + (by + 6) * h, 10, 1, ramp(base, -1)); }
-        for (let i = 0; i < 7; i++) px(X + ri(31) * h, Y + ri(31) * h, 1, 1, rnd() < .5 ? ramp(base, -2) : ramp(base, 2));
-        for (let i = 0; i < 2; i++) {                       // pebbles with cool shadows
-          const bx = X + ri(27) * h, by = Y + ri(28) * h, c = ["#9a92a0", "#b0a090"][ri(2)];
-          px(bx, by + 2 * h, 4, 1, ramp(base, -3)); px(bx, by, 4, 2, c); px(bx, by, 2, 1, ramp(c, 2)); px(bx + 3 * h, by + h, 1, 1, ramp(c, -2));
+        px(X, Y, 32, 1, ramp(base, 1)); px(X, Y, 1, 32, ramp(base, 1));         // soft bevel
+        px(X, Y + 31 * h, 32, 1, ramp(base, -1)); px(X + 31 * h, Y, 1, 32, ramp(base, -1));
+        if (rnd() < .1) {                                   // the odd pebble
+          const bx = X + (6 + ri(18)) * h, by = Y + (6 + ri(18)) * h, c = "#a8a0a8";
+          px(bx, by + 2 * h, 4, 1, ramp(base, -2)); px(bx, by, 4, 2, c); px(bx, by, 2, 1, ramp(c, 2));
         }
-        if (rnd() < .18) {                                  // little tufts of cave moss
-          const bx = X + ri(26) * h, by = Y + ri(26) * h;
-          px(bx, by + 2 * h, 5, 1, "#3e7a3a"); px(bx + h, by, 1, 2, "#5aae48"); px(bx + 3 * h, by + h, 1, 1, "#7ad060"); px(bx + 2 * h, by + h, 1, 1, "#5aae48");
-        }
-        if (rnd() < .07) {                                  // a glinting crystal shard
-          const bx = X + ri(26) * h, by = Y + ri(26) * h;
-          px(bx, by, 2, 4, "#7ad8ff"); px(bx, by, 1, 2, "#e8fbff"); px(bx + 2 * h, by + 2 * h, 1, 2, "#4aa0e0"); px(bx - h, by + 4 * h, 4, 1, ramp(base, -3));
-        }
-
-        if (y === 2) { px(X, Y, 32, 5, "rgba(50,20,60,0.35)"); px(X, Y, 32, 2, "rgba(50,20,60,0.25)"); }
+        if (y === 2) px(X, Y, 32, 4, "rgba(50,20,60,0.25)");
       } else if (y <= 1 && x >= 1 && x <= W - 2) {          // lit rock wall made of blocks
         px(X, Y, 32, 32, y === 0 ? "#7a6670" : "#9a8478");
         for (const by of [0, 16]) {
           const off = ((x + y + by / 16) % 2) ? 0 : 16;
           for (const bx of [off - 16, off]) {
-            const c = ["#a89484", "#a08c7c", "#ac9888"][ri(3)], dark = y === 0;
+            const c = "#a69282", dark = y === 0;
             const cc = dark ? ramp(c, -1) : c;
             px(X + bx * h, Y + by * h, 16, 16, cc);
             px(X + bx * h, Y + by * h, 16, 2, ramp(cc, 2)); px(X + bx * h, Y + by * h, 2, 16, ramp(cc, 1));
@@ -1320,7 +1307,7 @@ const backgrounds = {
         if (y === 1) px(X, Y + 30 * h, 32, 2, "#3a2a3a");
       } else {
         px(X, Y, 32, 32, "#2e2236");
-        for (let i = 0; i < 10; i++) px(X + ri(31) * h, Y + ri(31) * h, 1, 1, rnd() < .6 ? "#3a2c44" : "#241a2c");
+
       }
     }
     for (const tx of TORCHES) {
@@ -1337,6 +1324,16 @@ const backgrounds = {
     g.font = `bold ${9 * h}px "Trebuchet MS", sans-serif`; g.textAlign = "center"; g.textBaseline = "middle";
     g.fillStyle = "#3a1e10"; g.fillText("UPGRADES", DX + 16 * h + h / 2, 9 * h);
     g.fillStyle = "#fff0b0"; g.fillText("UPGRADES", DX + 16 * h, 8.5 * h);
+  }, g => {
+    const fx = TS, fy = 2 * TS, fw = (W - 2) * TS, fh = (H - 3) * TS;
+    for (const tx of TORCHES) {                              // warm pools of torch light
+      const cx = tx * TS + TS / 2, rg = g.createRadialGradient(cx, 2 * TS, 0, cx, 2 * TS, 4.5 * TS);
+      rg.addColorStop(0, "rgba(255,200,120,0.22)"); rg.addColorStop(1, "rgba(255,200,120,0)");
+      g.fillStyle = rg; g.fillRect(fx, fy, fw, fh);
+    }
+    const vg = g.createRadialGradient(W * TS / 2, H * TS / 2, 3 * TS, W * TS / 2, H * TS / 2, 11 * TS);
+    vg.addColorStop(0, "rgba(40,20,60,0)"); vg.addColorStop(1, "rgba(40,20,60,0.32)");   // soft edge shade
+    g.fillStyle = vg; g.fillRect(fx, fy, fw, fh);
   }),
   upgrades: makeBg((g, px, h, ri, rnd) => {
     const inside = ROOMS.upgrades.inside;
@@ -1344,18 +1341,17 @@ const backgrounds = {
       const X = x * TS, Y = y * TS;
       if (inside(x, y)) {                                   // honey-coloured planks
         for (const py of [0, 16]) {
-          const base = ["#d0985a", "#c88f52", "#d8a262"][ri(3)];
+          const base = (x + py / 16) % 2 ? "#d0985a" : "#cc9456";
           px(X, Y + py * h, 32, 16, base);
           px(X, Y + py * h, 32, 2, ramp(base, 1)); px(X, Y + (py + 14) * h, 32, 2, ramp(base, -1));
           px(X, Y + (py + 15) * h, 32, 1, "#8a5a34");
           px(X + ((x + py / 16) % 2 ? 10 : 24) * h, Y + py * h, 1, 16, "#8a5a34");
-          for (let i = 0; i < 3; i++) px(X + ri(28) * h, Y + (py + 4 + ri(8)) * h, 3 + ri(3), 1, ramp(base, -1));
-          if (rnd() < .3) px(X + ri(30) * h, Y + (py + 7) * h, 1, 1, "#6a4024");
+
         }
         if (y === 3) px(X, Y, 32, 4, "rgba(60,20,40,0.3)");
       } else if (y >= 0 && y <= 2 && x >= 2 && x <= 17) {  // plaster wall with timber beams & shelf
         px(X, Y, 32, 32, y === 2 ? "#d8bc8e" : "#ecd6aa");
-        for (let i = 0; i < 6; i++) px(X + ri(30) * h, Y + ri(30) * h, 2, 1, "#d4b888");
+
         if (x % 3 === 2) { px(X + 12 * h, Y, 6, 32, "#8a5a34"); px(X + 12 * h, Y, 2, 32, "#b07a44"); px(X + 17 * h, Y, 1, 32, "#5a3420"); }
         if (y === 0) { px(X, Y + 26 * h, 32, 6, "#8a5a34"); px(X, Y + 26 * h, 32, 2, "#b07a44"); }
         if (y === 1) {
@@ -1381,6 +1377,10 @@ const backgrounds = {
     px(DX + 2 * h, DY - 10 * h, 28, 8, "#b84a5a"); px(DX + 4 * h, DY - 8 * h, 24, 4, "#e87a8a"); px(DX + 6 * h, DY - 7 * h, 20, 1, "#ffd0a0");
     g.font = `bold ${8 * h}px "Trebuchet MS", sans-serif`; g.textAlign = "center"; g.textBaseline = "middle";
     g.fillStyle = "#fff0b0"; g.fillText("▼ MINE", DX + 16 * h, DY + 20 * h);
+  }, g => {
+    const rg = g.createRadialGradient(10 * TS, 4 * TS, TS, 10 * TS, 6 * TS, 9 * TS);
+    rg.addColorStop(0, "rgba(255,220,150,0.18)"); rg.addColorStop(1, "rgba(60,20,40,0.28)");
+    g.fillStyle = rg; g.fillRect(3 * TS, 3 * TS, 14 * TS, 7 * TS);
   }),
 };
 
