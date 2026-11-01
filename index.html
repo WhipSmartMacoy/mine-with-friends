@@ -185,10 +185,20 @@
     #panel-btn { display: inline-block; }
     .keys-wrap { display: none; }
   }
+  .pet-dock { grid-area: pet; place-items: center; pointer-events: none; }
+  #pet-canvas { width: 88px; height: 88px; }
+  .pet-dock.empty { visibility: hidden; }
   @media (hover: none), (max-width: 780px) {
     .touch { display: grid !important; }
     .act-btn.touch { display: block !important; }
-    .playarea { grid-template-columns: 1fr auto; grid-template-rows: 1fr auto; grid-template-areas: "stage stage" "dpad act"; }
+    /* Portrait phones: the stage hugs the square room; controls sit right under it */
+    .playarea { grid-template-columns: 1fr auto 1fr; grid-template-rows: auto 1fr; align-content: start;
+                grid-template-areas: "stage stage stage" "dpad pet act"; row-gap: 14px; column-gap: 4px; }
+    .stage { width: min(100%, calc(100dvh - 330px)); aspect-ratio: 1 / 1; justify-self: center; }
+    .joy { width: 164px; height: 164px; justify-self: start; align-self: start; margin-left: 2px; }
+    .joy-knob { width: 72px; height: 72px; }
+    .act-btn { width: 116px; height: 116px; font-size: 1.35rem; align-self: start; margin: 24px 2px 0 0; }
+    .pet-dock { align-self: start; margin-top: 38px; min-width: 0; }
   }
   @media (max-width: 520px) {
     .topbar { font-size: .78rem; } .code { font-size: .9rem; letter-spacing: 2px; }
@@ -200,16 +210,19 @@
   @media (orientation: landscape) and (max-height: 540px) {
     .app { padding: 4px; gap: 4px; }
     .topbar, .hudbar { padding: 3px 8px; }
-    .playarea { grid-template-columns: auto 1fr auto; grid-template-rows: 1fr; grid-template-areas: "dpad stage act"; }
-    .joy { align-self: center; width: 128px; height: 128px; }
-    .act-btn { width: 88px; height: 88px; margin: 0; }
+    .playarea { grid-template-columns: auto 1fr auto; grid-template-rows: 1fr; grid-template-areas: "dpad stage act"; align-content: stretch; }
+    .stage { width: auto; aspect-ratio: auto; }
+    .joy { align-self: center; width: 128px; height: 128px; margin: 0; }
+    .joy-knob { width: 56px; height: 56px; }
+    .act-btn { width: 88px; height: 88px; margin: 0; align-self: center; }
+    .pet-dock { display: none !important; }
   }
 </style>
 </head>
 <body>
 <header>
   <h1>⛏️ Mine with friends</h1>
-  <p>Mine ore, smelt bars, craft better pickaxes. 5 actions per turn; walking is free.</p>
+  <p>Team up with a friend: explore, mine ore, fight cave critters, and forge better gear together.</p>
 </header>
 
 <main class="screens" id="screens">
@@ -281,6 +294,7 @@
       </div>
     </div>
     <div class="joy touch" id="joy" aria-label="Movement stick"><div class="joy-ring"></div><div class="joy-knob" id="joy-knob"></div></div>
+    <div class="pet-dock touch" id="pet-dock"><canvas id="pet-canvas" width="192" height="192"></canvas></div>
     <button class="act-btn touch" id="act-btn">⛏️<br>Mine</button>
     <aside class="side" id="side">
       <div class="side-head"><h3 style="margin:0">📊 Stats</h3><button id="close-side">✕ Close</button></div>
@@ -313,7 +327,7 @@
 // ================= Version & fresh assets =================
 // BUILD changes with every release. Asset URLs carry it, so phones can't keep showing stale images,
 // and on load we check whether the server has a newer build than the one running.
-const BUILD = "2026.11.01-1610";
+const BUILD = "2026.11.01-1820";
 const withV = url => /^(https?:|data:|blob:)/.test(url) ? url : url + (url.includes("?") ? "&" : "?") + "v=" + BUILD;
 async function checkForUpdate() {
   try {
@@ -2031,6 +2045,27 @@ function drawPet(i, now) {
   ctx.restore();
 }
 
+// The equipped pet also romps between the joystick and the action button on touch screens.
+const petDock = document.getElementById("pet-dock"), petCtx = document.getElementById("pet-canvas").getContext("2d");
+let petDockKey = "";
+function drawPetDock(now) {
+  if (!petDock || petDock.offsetParent === null) return;
+  const me = state.players[net.seat], frames = me && PET_ART[LOOKS.pet[cleanLook(me.look, net.seat).pet || 0]];
+  petDock.classList.toggle("empty", !frames);
+  if (!frames) return;
+  const moving = joy.id !== null || (petPos[net.seat] && petPos[net.seat].moving > 0);
+  const f = Math.floor(now / (moving ? 120 : 220)) % frames.length;
+  const key = f + "|" + frames.length + "|" + moving;
+  if (key === petDockKey) return;
+  petDockKey = key;
+  const img = frames[f], c = petCtx.canvas, sc = Math.min((c.width - 16) / img.width, (c.height - 24) / img.height);
+  const w = img.width * sc, h = img.height * sc, x = (c.width - w) / 2, feet = c.height - 14;
+  petCtx.clearRect(0, 0, c.width, c.height);
+  petCtx.fillStyle = "#00000055"; petCtx.beginPath(); petCtx.ellipse(c.width / 2, feet, w * .34, 7, 0, 0, Math.PI * 2); petCtx.fill();
+  petCtx.imageSmoothingEnabled = true; petCtx.imageSmoothingQuality = "high";
+  petCtx.drawImage(img, x, feet - h + 3, w, h);
+}
+
 function drawEnemy(e, now) {
   const d = enemyDisp[e.id] || (enemyDisp[e.id] = { x: e.x, y: e.y });
   const f = Math.floor(now / (e.type === "bat" ? 160 : 380)) % 2;
@@ -2225,6 +2260,7 @@ function frame(now) {
     if (now - lastPanel > 500) { lastPanel = now; render(); }   // keep "where is everyone" text fresh
     vctx.drawImage(world, view.x * K, view.y * K, view.w * K, view.h * K, 0, 0, canvas.width, canvas.height);
     updateActButton();
+    drawPetDock(now);
     if (menuOpen) {   // walked (or got moved) away from the station → close its menu
       const st = STATIONS.find(x => x.id === menuOpen), me = state.players[net.seat];
       if (me.room !== "world" || !adjacent(me, st)) closeMenu();
