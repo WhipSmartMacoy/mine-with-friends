@@ -997,12 +997,13 @@ const LOOKS = {
   hatColor:  [["#f2c43a", "Yellow"], ["#e8483e", "Red"], ["#4cbf58", "Green"], ["#4a8ee8", "Blue"], ["#f4efe2", "White"], ["#3a3448", "Black"], ["#a866e8", "Purple"], ["#b07a44", "Leather"]],
   shirt:     [["#4a8ee8", "Blue"], ["#f08a3a", "Orange"], ["#e8483e", "Red"], ["#4cbf58", "Green"], ["#a866e8", "Purple"], ["#f4efe2", "White"], ["#3a3448", "Black"], ["#f2cf3a", "Yellow"]],
   pants:     [["#3b4a6b", "Navy"], ["#4b6fa5", "Denim"], ["#6b4a2e", "Brown"], ["#2a2a2e", "Black"], ["#3f6b3a", "Green"], ["#77736e", "Gray"], ["#8f2f2a", "Red"]],
+  pet:       ["None", "Dog", "Cat"],
   shoes:     [["#5a3a22", "Brown"], ["#1f1c1a", "Black"], ["#e8e4dc", "White"], ["#c23a30", "Red"], ["#3d6fb8", "Blue"], ["#b58a55", "Tan"]],
 };
 const LOOK_KEYS = Object.keys(LOOKS);
 const DEFAULT_LOOKS = [
-  { skin: 1, hairStyle: 0, hairColor: 1, hatStyle: 0, hatColor: 0, shirt: 0, pants: 0, shoes: 0 },
-  { skin: 3, hairStyle: 1, hairColor: 0, hatStyle: 0, hatColor: 0, shirt: 1, pants: 1, shoes: 1 },
+  { skin: 1, hairStyle: 0, hairColor: 1, hatStyle: 0, hatColor: 0, shirt: 0, pants: 0, shoes: 0, pet: 0 },
+  { skin: 3, hairStyle: 1, hairColor: 0, hatStyle: 0, hatColor: 0, shirt: 1, pants: 1, shoes: 1, pet: 0 },
 ];
 function cleanLook(l, seat = 0) {
   const out = { ...DEFAULT_LOOKS[seat] };
@@ -1524,7 +1525,11 @@ const ENEMY_PALS = {
   golem: { K: "#22182a", G: "#8a8496", g: "#5e5868", C: "#7ae0ff", Y: "#ffe070" },
 };
 const enemyArt = {};
-let BAT_FRAMES = null;   // hand-drawn bat (sprites/bat.png): 4 flap frames, 64x64 each
+let BAT_FRAMES = null;
+// Pet companions (sprites/pets/*.png): 4-frame strips, drawn at 1:1 art pixels, art faces left.
+const PET_DEFS = { Dog: { file: "sprites/pets/dog.png", fw: 52, fh: 46 }, Cat: { file: "sprites/pets/cat.png", fw: 56, fh: 64 } };
+const PET_ART = {};
+const petPos = [null, null];   // hand-drawn bat (sprites/bat.png): 4 flap frames, 64x64 each
 const enemySprite = (type, f) => enemyArt[type + f] || (enemyArt[type + f] = paint(enemyGrid(type, f), ENEMY_PALS[type], { passes: 0 }));
 const DAGGER_MAP = [".......M", "......MM", ".....MM.", "....MM..", ".K.MM...", "..KM....", ".KPK....", "P.K....."];
 const daggerArt = {};
@@ -1932,6 +1937,36 @@ function drawMinimap(now) {
   dot(me, "#8fd0ff");
 }
 
+// Pets trail a little behind their miner, trot to keep up, and hop along on room changes.
+function updatePets(dt) {
+  for (let i = 0; i < 2; i++) {
+    const p = state.players[i], d = disp[i], kind = LOOKS.pet[cleanLook(p.look, i).pet || 0];
+    if (!PET_ART[kind] || p.ko) { petPos[i] = null; continue; }
+    const [bx, by] = DIRS[p.dir || "down"];
+    const tx = d.x - bx * 0.85 + (i ? -0.3 : 0.3) * Math.abs(by), ty = d.y - by * 0.6 + 0.15;
+    let q = petPos[i];
+    if (!q || q.room !== p.room || Math.hypot(q.x - tx, q.y - ty) > 4) q = petPos[i] = { x: tx, y: ty, room: p.room, flip: false, moving: 0 };
+    const dx = tx - q.x, dy = ty - q.y, dist = Math.hypot(dx, dy);
+    if (dist > 0.12) {
+      const sp = Math.min(dist, Math.max(3.2, dist * 5) * dt);
+      q.x += dx / dist * sp; q.y += dy / dist * sp;
+      if (Math.abs(dx) > 0.05) q.flip = dx > 0;          // art faces left; flip when heading right
+      q.moving = 0.25;
+    } else q.moving = Math.max(0, q.moving - dt);
+  }
+}
+function drawPet(i, now) {
+  const q = petPos[i], frames = PET_ART[LOOKS.pet[cleanLook(state.players[i].look, i).pet || 0]];
+  if (!q || !frames) return;
+  const img = frames[q.moving > 0 ? Math.floor(now / 140) % frames.length : Math.floor(now / 600) % 2];
+  const w = img.width / K, h = img.height / K, cx = (q.x + .5) * TS, feet = (q.y + 1) * TS - 4;
+  ctx.fillStyle = "#00000044"; ctx.beginPath(); ctx.ellipse(cx, feet, w * .32, 4, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.save();
+  if (q.flip) { ctx.translate(cx, 0); ctx.scale(-1, 1); ctx.translate(-cx, 0); }
+  drawSprite(img, cx - w / 2, feet - h + 2, w, h);
+  ctx.restore();
+}
+
 function drawEnemy(e, now) {
   const d = enemyDisp[e.id] || (enemyDisp[e.id] = { x: e.x, y: e.y });
   const f = Math.floor(now / (e.type === "bat" ? 160 : 380)) % 2;
@@ -2102,6 +2137,8 @@ function frame(now) {
       STATIONS.filter(st => inRoom(st.x, st.y, { rx: org.x / W, ry: org.y / H }))
         .forEach(st => things.push({ y: st.y, draw: () => drawStation(st, now) }));
     }
+    updatePets(dt);
+    [0, 1].forEach(i => { if (petPos[i] && (i === net.seat || (net.connected && sameView(state.players[i], meP)))) things.push({ y: petPos[i].y - 0.02, draw: () => drawPet(i, now) }); });
     [0, 1].forEach(i => { if (i === net.seat || sameView(state.players[i], meP)) things.push({ y: disp[i].y + 0.01, draw: () => drawPlayer(i, now) }); });
     things.sort((a, b) => a.y - b.y).forEach(t => t.draw());
 
@@ -2454,6 +2491,7 @@ const OPTION_ROWS = [
   { title: "Shirt", color: "shirt" },
   { title: "Pants", color: "pants" },
   { title: "Shoes", color: "shoes" },
+  { title: "Pet companion", style: "pet" },
 ];
 
 function renderOptions() {
@@ -2463,7 +2501,9 @@ function renderOptions() {
     </div></div>` : "";
   if (myLook.sheet && CUSTOM.characters[myLook.sheet]) {
     document.getElementById("options").innerHTML = sheetRow + `<div class="opt"><div class="opt-title">Using a sprite-sheet character</div>
-      <small style="color:var(--muted)">This character comes from a sprite sheet in the game's <b>sprites</b> folder. Pick "Build your own" to customise instead.</small></div>`;
+      <small style="color:var(--muted)">This character comes from a sprite sheet in the game's <b>sprites</b> folder. Pick "Build your own" to customise instead.</small></div>
+      <div class="opt"><div class="opt-title">Pet companion</div><div class="choices">${LOOKS.pet.map((n, i) =>
+        `<button class="style ${myLook.pet === i ? "on" : ""}" data-opt="pet" data-val="${i}">${n}</button>`).join("")}</div></div>`;
     return drawPreviews();
   }
   document.getElementById("options").innerHTML = sheetRow + OPTION_ROWS.map(row => {
@@ -2471,7 +2511,7 @@ function renderOptions() {
       `<button class="style ${myLook[row.style] === i ? "on" : ""}" data-opt="${row.style}" data-val="${i}">${name}</button>`).join("")}</div>` : "";
     const hide = (row.style === "hatStyle" && LOOKS.hatStyle[myLook.hatStyle] === "None") ||
                  (row.style === "hairStyle" && LOOKS.hairStyle[myLook.hairStyle] === "Bald");
-    const swatches = hide ? "" : `<div class="choices">${LOOKS[row.color].map(([hex, name], i) =>
+    const swatches = hide || !row.color ? "" : `<div class="choices">${LOOKS[row.color].map(([hex, name], i) =>
       `<button class="swatch ${myLook[row.color] === i ? "on" : ""}" style="background:${hex}" title="${name}" aria-label="${row.title} ${name}"
         data-opt="${row.color}" data-val="${i}"></button>`).join("")}</div>`;
     return `<div class="opt"><div class="opt-title">${row.title}</div>${styles}${swatches}</div>`;
@@ -2489,6 +2529,8 @@ function drawPreviews() {
     g.fillStyle = "#00000055"; g.beginPath(); g.ellipse(54 + i * 96, 100, 26, 7, 0, 0, Math.PI * 2); g.fill();
     fitDraw(g, sp[d].stand, 14 + i * 96, 4, 80, 100);
   });
+  const pet = PET_ART[LOOKS.pet[myLook.pet || 0]];
+  if (pet) { g.save(); g.translate(96, 0); g.scale(-1, 1); fitDraw(g, pet[0], 0, 56, 46, 48); g.restore(); }   // facing your miner
   const mc = document.getElementById("me-preview"), m = mc.getContext("2d");
   m.imageSmoothingEnabled = false; m.clearRect(0, 0, 48, 48); m.fillStyle = "#a8805a"; m.fillRect(0, 0, 48, 48); fitDraw(m, sp.down.stand, 4, 0, 40, 47);
 }
@@ -2702,6 +2744,8 @@ state = newGame();
   if (prefs.name) document.getElementById("my-name").value = prefs.name;
   // First visit: build your miner. After that, go straight to the lobby (with an Edit button).
   if (prefs.name && prefs.look) showLobby(); else showCreator();
+  for (const [name, d] of Object.entries(PET_DEFS))
+    loadImage(d.file).then(img => { PET_ART[name] = [0, 1, 2, 3].map(i => sliceFrame(img, i, 0, d.fw, d.fh, 1)); drawPreviews(); }).catch(() => {});
   loadImage("sprites/bat.png").then(img => { BAT_FRAMES = [0, 1, 2, 3].map(i => sliceFrame(img, i, 0, 64, 64, 1)); }).catch(() => {});
   loadCustomSprites().then(() => {
     if (!CUSTOM.list.length && !CUSTOM.rocks && !CUSTOM.stations) return;
