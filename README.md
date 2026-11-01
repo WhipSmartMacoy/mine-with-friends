@@ -3,6 +3,7 @@
 A turn-based online mining game for two players, each on their own device.
 
 ## Getting into a game
+0. The first time you open the game, **create your miner**: name, skin tone, hair style and colour, hat style and colour, shirt, pants and shoes. You can change it later with **Edit miner** in the lobby.
 1. Enter your name and click **Create lobby**. You'll get a 5-character code.
 2. Send the code (or the **Copy invite link** link) to your friend. They enter it and click **Join lobby**.
 3. Lobbies hold exactly 2 players. Anyone else who tries the code is told the lobby is full.
