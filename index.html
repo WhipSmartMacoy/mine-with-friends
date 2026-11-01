@@ -196,10 +196,6 @@
   .log { font-size: .8rem; max-height: 220px; overflow-y: auto; }
   .log div { padding: 3px 0; border-bottom: 1px solid #ffffff10; }
   .side-foot { display: flex; flex-wrap: wrap; gap: 6px; }
-  .fit-row { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 10px; color: var(--muted); font-size: .85rem; }
-  .fit-row.small { margin: 0; font-size: .75rem; }
-  .fit-select { font-family: inherit; font-size: 16px; padding: 5px 8px; border-radius: 9px; border: 2px solid var(--line); background: #141c48; color: var(--text); }
-  .fit-row.small .fit-select { font-size: .8rem; padding: 3px 6px; }
   .side-foot button { font-size: .75rem; padding: 4px 9px; }
   .keys { font-size: .78rem; color: var(--muted); line-height: 1.6; }
   kbd { background: #00000055; border: 1px solid var(--line); border-radius: 6px; padding: 0 5px; font-family: inherit; }
@@ -338,7 +334,6 @@
       <button id="join-btn">Join lobby</button>
     </div>
     <div class="lobby-msg" id="lobby-msg"></div>
-    <div class="fit-row">📱 Screen fit <select class="fit-select"></select></div>
     <div style="text-align:center;color:var(--muted);font-size:.75rem;margin-top:6px">Version <span class="build-tag"></span></div>
   </section>
   <section id="recent" class="card lobby recent hidden">
@@ -405,7 +400,6 @@
       </div>
       <div class="side-foot">
         <span style="color:var(--muted);font-size:.72rem;align-self:center">v<span class="build-tag"></span></span>
-        <label class="fit-row small">📱 <select class="fit-select"></select></label>
         <button id="export">Export save</button>
         <button id="import" class="host-only">Import save</button>
         <button id="reset" class="host-only">Reset game</button>
@@ -418,10 +412,9 @@
 // ================= Version & fresh assets =================
 // BUILD changes with every release. Asset URLs carry it, so phones can't keep showing stale images,
 // and on load we check whether the server has a newer build than the one running.
-const BUILD = "2026.11.01-2030";
+const BUILD = "2026.11.01-2035";
 const withV = url => /^(https?:|data:|blob:)/.test(url) ? url : url + (url.includes("?") ? "&" : "?") + "v=" + BUILD;
 // ---- Screen fit: detect the phone from its screen size (in points) and pick a layout profile
-const FIT_PROFILES = { auto: "Auto", air: "iPhone Air", "15pro": "iPhone 15 Pro", standard: "Standard" };
 function detectDevice() {
   const w = Math.min(screen.width, screen.height), h = Math.max(screen.width, screen.height);
   const phone = /iPhone/.test(navigator.userAgent) || matchMedia("(hover: none) and (pointer: coarse)").matches;
@@ -429,14 +422,8 @@ function detectDevice() {
   if (phone && w === 393 && h === 852) return "15pro";          // iPhone 15 Pro (also 14 Pro, 15, 16)
   return "standard";
 }
-function fitChoice() { try { return (JSON.parse(localStorage.getItem("mwf-prefs")) || {}).fit || "auto"; } catch { return "auto"; } }
-function applyFit(choice = fitChoice()) {
-  const dev = choice === "auto" ? detectDevice() : choice;
-  document.documentElement.dataset.device = dev;
-  document.querySelectorAll(".fit-select").forEach(sel => {
-    sel.innerHTML = Object.entries(FIT_PROFILES).map(([k, v]) =>
-      `<option value="${k}" ${k === choice ? "selected" : ""}>${k === "auto" ? `Auto (${FIT_PROFILES[detectDevice()]})` : v}</option>`).join("");
-  });
+function applyFit() {   // always automatic
+  document.documentElement.dataset.device = detectDevice();
   fitStage();
 }
 // Size the square game view so the bars, controls and chat all fit on screen — whatever the browser's toolbars leave us.
@@ -3712,11 +3699,6 @@ state = newGame();
 }
 document.querySelectorAll(".build-tag").forEach(el => (el.textContent = BUILD));
 applyFit();
-document.addEventListener("change", e => {
-  if (!e.target.classList.contains("fit-select")) return;
-  writeJSON(PREFS_KEY, { ...(readJSON(PREFS_KEY) || {}), fit: e.target.value });
-  applyFit(e.target.value);
-});
 checkForUpdate();
 document.addEventListener("visibilitychange", () => { if (!document.hidden) checkForUpdate(); });   // phones resume old tabs
 requestAnimationFrame(frame);
