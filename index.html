@@ -125,6 +125,14 @@
   .minimap { position: absolute; top: 8px; right: 8px; width: 84px; height: 84px; image-rendering: pixelated; pointer-events: none;
              border: 2px solid #f4ecd0; border-radius: 6px; box-shadow: inset 0 0 0 1px #141c48; opacity: .92; }
   @media (max-width: 520px) { .minimap { width: 58px; height: 58px; top: 5px; right: 5px; } }
+  .qtrack { position: absolute; top: 100px; right: 8px; max-width: 46%; display: flex; flex-direction: column; gap: 3px; align-items: flex-end; pointer-events: none; }
+  .qtrack div { background: rgba(14,20,56,.82); border: 1px solid #6a7ad8; border-radius: 6px; padding: 2px 7px; font-size: .78rem; font-weight: bold;
+                white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .qtrack div.done { border-color: var(--gold); color: var(--gold); }
+  @media (max-width: 520px) { .qtrack { top: 68px; right: 5px; } .qtrack div { font-size: .7rem; } }
+  .qbar { position: relative; height: 14px; background: #00000066; border-radius: 7px; overflow: hidden; margin: 4px 0; }
+  .qbar i { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, #6ae07a, #f2c14e); }
+  .qbar span { position: relative; display: block; text-align: center; font-size: .72rem; line-height: 14px; font-weight: bold; text-shadow: 0 1px 0 #000; }
   .toast { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); max-width: 92%; text-align: center;
            background: linear-gradient(180deg, #4a62b8, #22307a); border: 2px solid var(--line); border-radius: 6px; padding: 6px 12px; font-size: .9rem;
            box-shadow: inset 0 0 0 2px #141c48;
@@ -320,6 +328,7 @@
     <div class="stage" id="stage">
       <canvas id="mine"></canvas>
       <canvas id="minimap" class="minimap" width="96" height="96"></canvas>
+      <div class="qtrack" id="qtrack"></div>
       <div class="toast fade" id="result"></div>
       <div class="menu hidden" id="menu" role="dialog" aria-modal="true">
         <div class="menu-head"><h3 id="menu-title"></h3><button id="menu-close">✕</button></div>
@@ -368,7 +377,7 @@
 // ================= Version & fresh assets =================
 // BUILD changes with every release. Asset URLs carry it, so phones can't keep showing stale images,
 // and on load we check whether the server has a newer build than the one running.
-const BUILD = "2026.11.01-1850";
+const BUILD = "2026.11.01-1910";
 const withV = url => /^(https?:|data:|blob:)/.test(url) ? url : url + (url.includes("?") ? "&" : "?") + "v=" + BUILD;
 async function checkForUpdate() {
   try {
@@ -507,6 +516,76 @@ function makeEnemy(s, level, x, y) {
            gold: Math.round(T.gold * scale), xp: Math.round(T.xp * scale), nextStep: Date.now() + 700, nextAtk: 0 };
 }
 const enemyAt = (s, x, y) => (s.enemies || []).find(e => e.x === x && e.y === y);
+const enemyName = e => e.name || ENEMY_TYPES[e.type].name;
+
+// ---- Quests: team quests from the town folk (both players share progress and rewards)
+const BOSSES = [
+  { type: "slime", name: "Slime King",      mult: 6 },
+  { type: "bat",   name: "Bat Matriarch",   mult: 6 },
+  { type: "golem", name: "Stone Colossus",  mult: 6 },
+];
+const typeForLevel = lv => lv <= 3 ? "slime" : lv <= 6 ? "bat" : "golem";
+function teamReach(s) { return Math.max(...s.players.map(p => maxRock(p))); }
+function makeQuest(s, npc) {
+  const t = s.questsDone[npc] || 0, reach = teamReach(s), deep = s.team.maxDepth || 1;
+  if (npc === "brea") {                                  // monster hunts
+    const types = ["slime", ...(reach >= 4 ? ["bat"] : []), ...(reach >= 7 ? ["golem"] : [])];
+    const target = t % 2 ? types[Math.min(types.length - 1, Math.floor(t / 2) % types.length)] : "any";
+    const need = Math.min(30, (target === "any" ? 5 : 3) + 2 * t);
+    const gold = 25 + need * (target === "golem" ? 18 : target === "bat" ? 12 : 8), xp = 10 + need * 4;
+    return { npc, kind: "kill", target, need, have: 0, accepted: false, gold, xp, item: t % 3 === 2 ? "lunch" : "potion",
+             title: target === "any" ? `Clear out ${need} monsters` : `Hunt ${need} ${ENEMY_TYPES[target].name}s`,
+             desc: target === "any" ? "Critters keep crawling out of the mine. Thin their numbers — any monster counts."
+                                    : `Too many ${ENEMY_TYPES[target].name}s down there. Take care of them for me.` };
+  }
+  if (npc === "moss") {                                  // boss fights
+    const b = BOSSES[t % BOSSES.length], depth = Math.max(1, Math.min(deep, 1 + t));
+    const level = Math.max(1, Math.min(10, 2 + 2 * t));
+    return { npc, kind: "boss", boss: b.name, btype: b.type, level, depth, need: 1, have: 0, accepted: false,
+             gold: 120 + 90 * t, xp: 40 + 30 * t, item: t % 2 ? "dynamite" : "charm",
+             title: `Defeat the ${b.name}`,
+             desc: `In my day we had a name for it: the ${b.name}. It lurks at depth ${depth}. Bring a sharp dagger — and a friend.` };
+  }
+  // pip: deliveries from the team stash
+  const ores = ROCKS.filter(r => r.level <= Math.max(1, reach) && r.name !== "Coal");
+  const ore = ores[Math.max(0, ores.length - 1 - (t % Math.min(3, ores.length)))];
+  const bars = t % 3 === 2 && ore.name !== "Stone";
+  const need = bars ? 2 + Math.floor(t / 3) : Math.max(3, 8 - ore.level + Math.floor(t / 2));
+  const what = bars ? barName(ore.name) : ore.name + " ore";
+  return { npc, kind: "collect", res: bars ? "bars" : "bag", item_name: ore.name, what, need, have: 0, accepted: false,
+           gold: Math.round(need * ore.value * (bars ? 4 : 1.6)) + 20, xp: 12 + need * ore.level * (bars ? 4 : 2), item: t % 2 ? "charm" : "potion",
+           title: `Deliver ${need} ${what}${need > 1 && !bars ? "" : need > 1 ? "s" : ""}`,
+           desc: `My customers are clamouring for ${what}. Bring me ${need} from your team stash and I'll pay well.` };
+}
+function questProgress(q) {   // collect quests count what's in the stash right now
+  if (q.kind === "collect") return Math.min(q.need, (state.shared[q.res][q.item_name] || 0));
+  return Math.min(q.need, q.have);
+}
+const questReady = q => q && q.accepted && questProgress(q) >= q.need;
+function questKill(e) {       // host: an enemy died
+  for (const q of Object.values(state.quests)) {
+    if (!q || !q.accepted) continue;
+    if (q.kind === "kill" && (q.target === "any" || q.target === e.type) && !e.boss && q.have < q.need) q.have++;
+    if (q.kind === "boss" && e.boss && e.questBoss === q.npc) q.have = 1;
+  }
+}
+function spawnBoss(L, q) {
+  for (let tries = 0; tries < 100; tries++) {
+    const x = 2 + Math.floor(Math.random() * (W - 4)), y = 6 + Math.floor(Math.random() * (H - 8));
+    if (!mineFree(L, x, y) || enemyAt(L, x, y)) continue;
+    if (state.players.some(p => p.room === "mine:" + L.depth && Math.abs(p.x - x) + Math.abs(p.y - y) < 5)) continue;
+    const e = makeEnemy(L, q.level, x, y), b = BOSSES.find(b => b.name === q.boss) || BOSSES[0], T = ENEMY_TYPES[b.type];
+    const sc = 1 + (q.level - 1) * 0.22;
+    Object.assign(e, { type: b.type, boss: true, questBoss: q.npc, name: q.boss,
+      hp: Math.round(T.hp * sc * b.mult), dmg: Math.round((T.dmg + Math.floor(q.level / 2)) * 1.5), gold: Math.round(T.gold * sc * 5), xp: Math.round(T.xp * sc * 4),
+      step: Math.round(T.step * 1.25), atk: Math.round(T.atk * 1.1) });
+    e.max = e.hp;
+    L.enemies.push(e);
+    addLog(`⚠️ The ${q.boss} has appeared at depth ${L.depth}!`, false);
+    return e;
+  }
+  return null;
+}
 
 const MILESTONES = [
   { label: "Mine 25 rocks together",     test: t => t.mined >= 25 },
@@ -517,6 +596,7 @@ const MILESTONES = [
   { label: "Defeat 10 enemies",          test: t => (t.kills || 0) >= 10 },
   { label: "Reach depth 5 of the mine",  test: t => (t.maxDepth || 1) >= 5 },
   { label: "Both own a Mythril pickaxe", test: (t, p) => p.every(x => x.pick >= 9) },
+  { label: "Complete 5 quests",          test: t => (t.quests || 0) >= 5 },
 ];
 
 // ---- Space. Every screen ("room") is 15x15 tiles.
@@ -537,7 +617,15 @@ const STATIONS = [
   { id: "cart",  x: SHOP_ROOM.rx * W + 4,  y: SHOP_ROOM.ry * H + 5, name: "Upgrade Cart", verb: "browse upgrades" },
   { id: "forge", x: SHOP_ROOM.rx * W + 7,  y: SHOP_ROOM.ry * H + 5, name: "Forge",        verb: "smelt bars" },
   { id: "anvil", x: SHOP_ROOM.rx * W + 10, y: SHOP_ROOM.ry * H + 5, name: "Anvil",        verb: "craft gear" },
+  // Town folk who hand out team quests
+  { id: "brea", npc: true, x: HOME_ROOM.rx * W + 11, y: HOME_ROOM.ry * H + 9, name: "Captain Brea", verb: "talk", icon: "⚔️",
+    role: "Town guard", look: { skin: 3, hairStyle: 1, hairColor: 2, hatStyle: 0, hatColor: 5, shirt: 2, pants: 0, shoes: 1, pet: 0 } },
+  { id: "moss", npc: true, x: CAVE_ROOM.rx * W + 4, y: CAVE_ROOM.ry * H + 8, name: "Old Moss", verb: "talk", icon: "👑",
+    role: "Retired miner", look: { skin: 0, hairStyle: 1, hairColor: 5, hatStyle: 2, hatColor: 2, shirt: 3, pants: 2, shoes: 0, pet: 0 } },
+  { id: "pip", npc: true, x: SHOP_ROOM.rx * W + 12, y: SHOP_ROOM.ry * H + 9, name: "Merchant Pip", verb: "talk", icon: "📦",
+    role: "Travelling trader", look: { skin: 4, hairStyle: 2, hairColor: 0, hatStyle: 3, hatColor: 7, shirt: 4, pants: 5, shoes: 5, pet: 0 } },
 ];
+const NPCS = STATIONS.filter(st => st.npc);
 // Mine levels (one room each): ladder up in the top wall, arrive just below it.
 const ROOMS = { mine: { inside: (x, y) => x >= 1 && x <= W - 2 && y >= 2 && y <= H - 2, door: { x: 7, y: 1 } } };
 const MINE_ARRIVE = { x: 7, y: 2, dir: "down" };
@@ -614,9 +702,10 @@ function newGame() {
     players: [newPlayer("Player 1", 0), newPlayer("Player 2", 1)],
     shared: { gold: 0, bag: {}, bars: {} },
     team: { mined: 0, fails: 0, goldEarned: 0, ores: {}, kills: 0, maxDepth: 1 },
-    log: [], mines: {}, drops: [], nextDropId: 1, chat: [], nextChatId: 1,
+    log: [], mines: {}, drops: [], nextDropId: 1, chat: [], nextChatId: 1, quests: {}, questsDone: {},
   };
   s.mines[1] = newMineLevel(1, s.players);
+  for (const n of NPCS) s.quests[n.id] = makeQuest(s, n.id);
   return s;
 }
 function migrate(s) {   // bring older saves up to date
@@ -643,6 +732,8 @@ function migrate(s) {   // bring older saves up to date
       delete p.gold; delete p.bag; delete p.bars;
     }
   }
+  s.quests = s.quests || {}; s.questsDone = s.questsDone || {};
+  for (const n of NPCS) if (!s.quests[n.id]) s.quests[n.id] = makeQuest(s, n.id);
   s.chat = Array.isArray(s.chat) ? s.chat : []; s.nextChatId = s.nextChatId || 1;
   s.drops = Array.isArray(s.drops) ? s.drops : []; s.nextDropId = s.nextDropId || 1;
   s.team.kills = s.team.kills || 0; s.team.maxDepth = s.team.maxDepth || 1;
@@ -792,11 +883,13 @@ function applyAction(seat, action) {
     const crit = Math.random() < 0.12;
     const dmg = (daggerDamage(p) + Math.floor(Math.random() * 2)) * (crit ? 2 : 1);
     e.hp -= dmg;
-    const name = ENEMY_TYPES[e.type].name;
+    const name = enemyName(e);
     if (e.hp <= 0) {
       L.enemies = L.enemies.filter(x => x !== e);
+      questKill(e);
+      if (e.boss) { dropItem(p.room, e.x, e.y, "lunch", 1); dropItem(p.room, e.x, e.y, "dynamite", 1); }
       sh.gold += e.gold; p.xp += e.xp; p.kills++; state.team.kills++; state.team.goldEarned += e.gold;
-      let text = `${p.name} defeated a ${name}! +${e.gold} gold, +${e.xp} XP`;
+      let text = e.boss ? `👑 ${p.name} defeated the ${e.name}! +${e.gold} gold, +${e.xp} XP` : `${p.name} defeated a ${name}! +${e.gold} gold, +${e.xp} XP`;
       const loot = Math.random();   // now and then a critter leaves something behind
       if (loot < 0.12) { dropItem(p.room, e.x, e.y, loot < 0.03 ? "charm" : "potion", 1); text += " It dropped something!"; }
       if (levelUp(p)) { text += ` — reached Miner level ${p.level}!`; p.hp = maxHp(p); }
@@ -860,6 +953,37 @@ function applyAction(seat, action) {
   const fx = (color, label) => ({ room: "world", x: station.x, y: station.y, color, label });
   let text;
 
+  if (action.type === "quest" && station.npc) {
+    const q = state.quests[station.id];
+    if (!q) return null;
+    if (action.op === "accept" && !q.accepted) {
+      q.accepted = true;
+      text = `${p.name} took on a quest from ${station.name}: ${q.title}.`;
+      addLog(text, true);
+      return { text, ok: true, seat, fx: fx("#ffe070", "Quest accepted!") };
+    }
+    if (action.op === "abandon" && q.accepted) {
+      for (const L of Object.values(state.mines)) L.enemies = L.enemies.filter(e => e.questBoss !== station.id);
+      state.quests[station.id] = makeQuest(state, station.id);
+      text = `${p.name} gave up on “${q.title}”.`;
+      addLog(text, false);
+      return { text, ok: false, seat };
+    }
+    if (action.op === "turnin" && questReady(q)) {
+      if (q.kind === "collect") sh[q.res][q.item_name] -= q.need;
+      sh.gold += q.gold; state.team.goldEarned += q.gold;
+      for (const pl of state.players) { pl.xp += q.xp; if (levelUp(pl)) pl.hp = maxHp(pl); }
+      if (q.item && !addItem(p, q.item, 1)) dropItem("world", p.fx, p.fy + 0.2, q.item, 1, -1);
+      state.questsDone[station.id] = (state.questsDone[station.id] || 0) + 1;
+      state.team.quests = (state.team.quests || 0) + 1;
+      state.quests[station.id] = makeQuest(state, station.id);
+      text = `✅ Quest complete: ${q.title}! +${q.gold} gold, +${q.xp} XP each${q.item ? `, and ${p.name} got a ${ITEMS[q.item].name} ${ITEMS[q.item].icon}` : ""}.`;
+      addLog(text, true);
+      return { text, ok: true, seat, fx: fx("#ffe070", `+${q.gold} 🪙`) };
+    }
+    return null;
+  }
+
   if (action.type === "buy" && station.id === "cart") {
     const item = CART_ITEMS[action.item];
     if (!item || !item.available(p)) return null;
@@ -921,6 +1045,9 @@ function hostTick() {
     const key = "mine:" + L.depth;
     const targets = state.players.filter((p, i) => p.room === key && !p.ko && (i === 0 || net.connected));
     if (!targets.length) continue;
+    for (const q of Object.values(state.quests))      // an accepted boss quest: the boss shows up when you get there
+      if (q && q.accepted && q.kind === "boss" && q.depth === L.depth && q.have < 1 && !L.enemies.some(e => e.questBoss === q.npc))
+        if (spawnBoss(L, q)) simDirty = true;
     if (now >= (nextAmbient[key] || 0)) {                     // enemies also wander in on their own
       nextAmbient[key] = now + 1000;
       if (L.enemies.length < MAX_ENEMIES && Math.random() < AMBIENT_SPAWN_CHANCE) {
@@ -942,14 +1069,14 @@ function hostTick() {
       if (Math.abs(e.x - tgt.x) + Math.abs(e.y - tgt.y) <= 1) {
         e.dir = tgt.x > e.x ? "right" : tgt.x < e.x ? "left" : tgt.y > e.y ? "down" : "up";
         if (now >= e.nextAtk) {
-          e.nextAtk = now + T.atk; e.attackAt = now;
+          e.nextAtk = now + (e.atk || T.atk); e.attackAt = now;
           tgt.hp = Math.max(0, tgt.hp - e.dmg);
           pendingHits.push({ seat: state.players.indexOf(tgt), dmg: e.dmg });
-          if (tgt.hp <= 0) { tgt.ko = now + KO_MS; addLog(`${tgt.name} was knocked out by a ${T.name}!`, false); }
+          if (tgt.hp <= 0) { tgt.ko = now + KO_MS; addLog(`${tgt.name} was knocked out by ${e.boss ? "the " + e.name : "a " + T.name}!`, false); }
           simDirty = true;
         }
       } else if (now >= e.nextStep) {
-        e.nextStep = now + T.step;
+        e.nextStep = now + (e.step || T.step);
         const opts = Object.entries(DIRS).map(([d, [dx, dy]]) => ({ d, x: e.x + dx, y: e.y + dy }))
           .filter(o => mineFree(L, o.x, o.y) && !enemyAt(L, o.x, o.y) && !state.players.some(q => q.room === key && q.x === o.x && q.y === o.y))
           .sort((a, b) => (Math.abs(a.x - tgt.x) + Math.abs(a.y - tgt.y)) - (Math.abs(b.x - tgt.x) + Math.abs(b.y - tgt.y)));
@@ -2122,7 +2249,24 @@ function drawRock(r, now) {
   drawLabel(String(r.level), bx, by + 1, "#fff", 11 * Math.min(1, 1.4 / ui) );
 }
 
+const npcSprites = {};
+function drawNpc(st, now) {
+  const set = npcSprites[st.id] || (npcSprites[st.id] = lookSprites(st.look));
+  const me = disp[net.seat], dx = me.x - st.x, dy = me.y - st.y;
+  const dir = Math.abs(dx) + Math.abs(dy) > 4 ? "down" : Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up");
+  const ds = set[dir] || set.down, img = ds.idle && ds.idle.length ? ds.idle[Math.floor((now + st.x * 137) / 700) % ds.idle.length] : ds.stand;
+  const w = img.width / K, h = img.height / K, cx = st.x * TS + TS / 2, feet = st.y * TS + TS - 6;
+  ctx.fillStyle = "#00000055"; ctx.beginPath(); ctx.ellipse(cx, st.y * TS + TS - 4, 15, 5, 0, 0, Math.PI * 2); ctx.fill();
+  drawSprite(img, cx - w / 2, feet - h + 6);
+  const q = state.quests && state.quests[st.id], top = feet - h + 6;
+  drawLabel(st.name, cx, top - 10 * ui, "#ffe08a", 13);
+  if (q) {   // ! = new quest, ? = ready to hand in, … = in progress
+    const mark = !q.accepted ? "!" : questReady(q) ? "?" : "…", bob = Math.sin(now / 250) * 3;
+    drawLabel(mark, cx, top - 30 * ui + bob, mark === "…" ? "#b8b8d8" : "#ffd23f", mark === "…" ? 18 : 26);
+  }
+}
 function drawStation(st, now) {
+  if (st.npc) return drawNpc(st, now);
   const X = st.x * TS, Y = st.y * TS;
   ctx.fillStyle = "#00000055"; ctx.beginPath(); ctx.ellipse(X + TS / 2, Y + TS - 4, 22, 6, 0, 0, Math.PI * 2); ctx.fill();
   const art = (CUSTOM.stations && CUSTOM.stations[st.id]) || STATION_ART[st.id];
@@ -2267,7 +2411,7 @@ function drawEnemy(e, now) {
   const f = Math.floor(now / (e.type === "bat" ? 160 : 380)) % 2;
   const custom = e.type === "bat" && BAT_FRAMES;
   const img = custom ? BAT_FRAMES[Math.floor(now / 85) % BAT_FRAMES.length] : enemySprite(e.type, f);
-  const big = e.type === "golem" ? 1.25 : custom ? 1.4 : e.type === "bat" ? 0.95 : 1;
+  const big = (e.type === "golem" ? 1.25 : custom ? 1.4 : e.type === "bat" ? 0.95 : 1) * (e.boss ? 1.8 : 1);
   const w = TS * big, cx = d.x * TS + TS / 2, feet = d.y * TS + TS;
   ctx.fillStyle = "#00000055"; ctx.beginPath(); ctx.ellipse(cx, feet - 4, 14 * big, 4.5, 0, 0, Math.PI * 2); ctx.fill();
   const lift = e.type === "bat" ? 10 + Math.sin(now / 200 + e.id) * 3 : 0;
@@ -2278,10 +2422,16 @@ function drawEnemy(e, now) {
   if (now - (enemyFlash[e.id] || -1e9) < 140) {                 // white hit flash
     ctx.globalAlpha = .6; ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.ellipse(cx, feet - w / 2 - lift, w * .35, w * .35, 0, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
   }
-  hpBar(cx, feet - (custom ? w * 0.68 : w) - lift - 4, e.hp, e.max, "#ff5a5a");
+  const barY = feet - (custom ? w * 0.68 : w) - lift - 4;
+  if (e.boss) {
+    ctx.globalAlpha = .25 + .15 * Math.sin(now / 200); ctx.fillStyle = "#ff3a3a";
+    ctx.beginPath(); ctx.ellipse(cx, feet - 4, 22 * big, 7 * big, 0, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+    drawLabel("👑 " + e.name, cx, barY - 14 * ui, "#ff9a7a", 13);
+    hpBar(cx, barY, e.hp, e.max, "#ff3a3a", 60);
+  } else hpBar(cx, barY, e.hp, e.max, "#ff5a5a");
 }
-function hpBar(cx, y, hp, max, color) {
-  const bw = 30, frac = Math.max(0, Math.min(1, hp / max));
+function hpBar(cx, y, hp, max, color, bw = 30) {
+  const frac = Math.max(0, Math.min(1, hp / max));
   ctx.fillStyle = "#1a1640"; ctx.fillRect(cx - bw / 2 - 1, y - 1, bw + 2, 6);
   ctx.fillStyle = "#3a2a3a"; ctx.fillRect(cx - bw / 2, y, bw, 4);
   ctx.fillStyle = color; ctx.fillRect(cx - bw / 2, y, bw * frac, 4);
@@ -2346,7 +2496,7 @@ function drawTooltip() {
     tx = rock.x; ty = rock.y; border = info.color;
   } else if (f.kind === "enemy") {
     const e = f.enemy, T = ENEMY_TYPES[e.type];
-    lines = [[`${T.name} · Lvl ${e.level}`, "#ffffff"], [`HP ${e.hp}/${e.max} · hits for ${e.dmg}`, "#ff9a8a"],
+    lines = [[`${e.boss ? "👑 " : ""}${enemyName(e)} · Lvl ${e.level}`, "#ffffff"], [`HP ${e.hp}/${e.max} · hits for ${e.dmg}`, "#ff9a8a"],
              [`${act} to attack (🗡️ ${daggerDamage(me)} dmg)`, "#ffe070"]];
     tx = e.x; ty = e.y; border = "#ff5a5a";
   } else {
@@ -2355,6 +2505,7 @@ function drawTooltip() {
     if (st.id === "anvil") info = "Forge pickaxes & daggers from bars";
     if (st.id === "forge") info = "2 ore + 1 Coal → 1 bar";
     if (st.id === "cart") info = "Potions, charms, dynamite & more";
+    if (st.npc) { const q = state.quests[st.id]; info = !q ? st.role : !q.accepted ? "Has a quest for you!" : questReady(q) ? "Quest complete — hand it in!" : `${q.title} (${questProgress(q)}/${q.need})`; }
     lines = [[st.name, "#ffffff"], [info, "#c8d4ff"], [`${act} to ${st.verb}`, "#ffe070"]];
     tx = st.x; ty = st.y; border = "#f2c14e";
   }
@@ -2584,6 +2735,26 @@ function invLine(p) {
   return `<div class="menu-inv"><b>Team stash</b><br>🎒 Ore: ${ores}<br>🧱 Bars: ${bars}<br>🪙 Gold: ${sh.gold}</div>`;
 }
 
+function renderNpcMenu(st, me) {
+  const q = state.quests[st.id], note = document.getElementById("menu-note"), on = net.connected;
+  note.className = "menu-note turn";
+  note.textContent = !q ? "" : !q.accepted ? `“${q.desc}”` : questReady(q) ? "“Splendid work, the pair of you! Here's what I promised.”" : "“How's it going? Come back when it's done.”";
+  if (!q) return setMenuBody("");
+  const prog = questProgress(q), pct = Math.round(prog / q.need * 100);
+  const reward = `🪙 ${q.gold} gold · ⭐ ${q.xp} XP each${q.item ? ` · ${ITEMS[q.item].icon} ${ITEMS[q.item].name}` : ""}`;
+  const where = q.kind === "boss" ? `Found at depth ${q.depth} of the mine` : q.kind === "collect" ? `From the team stash · you have ${state.shared[q.res][q.item_name] || 0}` :
+    q.target === "any" ? "Any monster in the mine counts" : `Only ${ENEMY_TYPES[q.target].name}s count`;
+  let html = `<div class="mrow"><div class="ic">${st.icon}</div><div class="txt"><b>${q.title}</b><small>${where}</small>
+      ${q.accepted ? `<div class="qbar"><i style="width:${pct}%"></i><span>${prog} / ${q.need}</span></div>` : ""}<small>Reward: ${reward}</small></div>`;
+  if (!q.accepted) html += `<div class="btns"><button class="btn-gold" data-quest="accept" ${on ? "" : "disabled"}>Accept</button></div>`;
+  else if (questReady(q)) html += `<div class="btns"><button class="btn-gold" data-quest="turnin" ${on ? "" : "disabled"}>Hand in</button></div>`;
+  html += `</div>`;
+  if (q.accepted && !questReady(q)) html += `<div style="text-align:right;margin-top:6px"><button data-quest="abandon" ${on ? "" : "disabled"}>Give up</button></div>`;
+  html += `<div class="menu-inv">Quests are shared: both of you make progress, and both get the XP. Completed so far for ${st.name}: ${state.questsDone[st.id] || 0}.</div>`;
+  if (!on) html += `<div class="menu-inv">Quests open up once your teammate joins.</div>`;
+  setMenuBody(html);
+}
+
 let bagSel = -1, lastMenuHtml = "";
 function setMenuBody(html) {   // only touch the DOM when something changed, so taps never land on a rebuilt button
   if (html === lastMenuHtml) return;
@@ -2612,6 +2783,18 @@ function renderBag(el) {
   setMenuBody(html);
 }
 
+let lastQt = "";
+function renderQuestTracker() {
+  const el = document.getElementById("qtrack"); if (!el || !state.quests) return;
+  const html = NPCS.map(n => state.quests[n.id]).filter(q => q && q.accepted).map(q => {
+    const npc = NPCS.find(n => n.id === q.npc), ready = questReady(q);
+    const label = ready ? `✅ Hand in to ${npc.name}` : q.kind === "boss" ? `👑 ${q.boss} · depth ${q.depth}` :
+      q.kind === "kill" ? `⚔️ ${q.target === "any" ? "Monsters" : ENEMY_TYPES[q.target].name + "s"} ${questProgress(q)}/${q.need}` : `📦 ${q.what} ${questProgress(q)}/${q.need}`;
+    return `<div class="${ready ? "done" : ""}">${escapeHtml(label)}</div>`;
+  }).join("");
+  if (html !== lastQt) { lastQt = html; el.innerHTML = html; }
+}
+
 function renderMenu() {
   const el = document.getElementById("menu");
   if (!menuOpen || !state) return el.classList.add("hidden");
@@ -2621,7 +2804,8 @@ function renderMenu() {
   el.classList.remove("hidden");
   const myTurn = net.connected;
   const st = STATIONS.find(s => s.id === menuOpen), sh = stash();
-  document.getElementById("menu-title").textContent = { cart: "🛒 Upgrade Cart", forge: "🔥 Forge", anvil: "⚒️ Anvil" }[st.id];
+  document.getElementById("menu-title").textContent = st.npc ? `💬 ${st.name}` : { cart: "🛒 Upgrade Cart", forge: "🔥 Forge", anvil: "⚒️ Anvil" }[st.id];
+  if (st.npc) return renderNpcMenu(st, me);
   const note = document.getElementById("menu-note");
   note.className = "menu-note" + (myTurn ? " turn" : "");
   note.textContent = myTurn ? "Gold, ore and bars come from the team stash you share with your teammate."
@@ -2676,6 +2860,7 @@ document.getElementById("menu").addEventListener("click", e => {
   if (b.dataset.slot !== undefined) { bagSel = +b.dataset.slot === bagSel ? -1 : +b.dataset.slot; return renderMenu(); }
   if (b.dataset.use !== undefined) return sendAction({ type: "useItem", slot: +b.dataset.use });
   if (b.dataset.drop !== undefined) return sendAction({ type: "drop", slot: +b.dataset.drop, n: +b.dataset.n });
+  if (b.dataset.quest) return stationAction({ type: "quest", op: b.dataset.quest });
   if (b.dataset.buy) stationAction({ type: "buy", item: b.dataset.buy });
   else if (b.dataset.smelt) stationAction({ type: "smelt", ore: b.dataset.smelt, count: +b.dataset.n });
   else if (b.dataset.craft !== undefined) stationAction({ type: "craft", item: b.dataset.craft || "pickaxe" });
@@ -3026,7 +3211,7 @@ function renderHud() {
 
 function render() {
   if (!state) return;
-  renderPlayer(0); renderPlayer(1); renderTeam(); renderHud(); renderMenu(); renderChat();
+  renderPlayer(0); renderPlayer(1); renderTeam(); renderHud(); renderMenu(); renderChat(); renderQuestTracker();
 }
 
 function escapeHtml(s) {

@@ -31,6 +31,11 @@ Players connect directly browser-to-browser (via [PeerJS](https://peerjs.com)), 
 - **Health** ❤️: at 0 you're knocked out and wake at home base.
 - **Shop**: Forge (2 ore + 1 Coal → 1 bar), Anvil (forge your next **pickaxe** or **dagger** from bars), Cart (🧪 Potion, 🥪 Lunch, 🍀 Charm, 🧨 Dynamite, 🪨 Coal, 🎒 Bigger Backpack).
 - **Backpack** 🎒: tap **Bag** on the health bar (or press **B** / **I**). It starts at 3×3 slots and grows up to 5×5 with Bigger Backpack upgrades from the cart. Potions, lunches, charms and dynamite go here; tap an item to **Use** or **Drop** it.
+- **Quests** 📜: talk to the town folk (face them and press Space / tap Use). A gold **!** means a new quest, **?** means it's ready to hand in. Quests are shared by the team, and both players get the XP.
+  - ⚔️ **Captain Brea** (home base): defeat a number of monsters, sometimes a specific kind.
+  - 👑 **Old Moss** (mine entrance): hunt a boss (Slime King, Bat Matriarch, Stone Colossus) that appears at a given depth once accepted.
+  - 📦 **Merchant Pip** (shop): deliver ore or bars from the team stash.
+  - Active quests are tracked under the mini-map; each completed quest unlocks a harder, better-paying one.
 - **Team chat** 💬: type below the controls (or under the game on desktop). Messages also pop up as speech bubbles over your miner.
 - **Dropping & picking up**: dropped items appear on the ground for anyone to grab by walking over them (step away first to re-grab your own). Defeated enemies sometimes drop a potion or charm.
 
