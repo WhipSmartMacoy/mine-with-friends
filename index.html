@@ -377,7 +377,7 @@
 // ================= Version & fresh assets =================
 // BUILD changes with every release. Asset URLs carry it, so phones can't keep showing stale images,
 // and on load we check whether the server has a newer build than the one running.
-const BUILD = "2026.11.01-1910";
+const BUILD = "2026.11.01-1940";
 const withV = url => /^(https?:|data:|blob:)/.test(url) ? url : url + (url.includes("?") ? "&" : "?") + "v=" + BUILD;
 async function checkForUpdate() {
   try {
@@ -494,7 +494,8 @@ function craftCost(p, kind = "pickaxe") {
   if (tier > 9) return null;
   const ore = PICKAXES[tier].name;
   const need = kind === "dagger" ? Math.max(2, barsForTier(tier) - 1) : barsForTier(tier);
-  return { kind, tier, ore, bar: barName(ore), need, have: stash().bars[ore] || 0 };
+  const handles = kind === "pickaxe" ? 1 + Math.floor(tier / 4) : 0;   // every pickaxe needs a wooden handle
+  return { kind, tier, ore, bar: barName(ore), need, have: stash().bars[ore] || 0, handles, haveHandles: stash().bag.Handle || 0 };
 }
 
 // ---- Combat
@@ -547,6 +548,12 @@ function makeQuest(s, npc) {
              desc: `In my day we had a name for it: the ${b.name}. It lurks at depth ${depth}. Bring a sharp dagger — and a friend.` };
   }
   // pip: deliveries from the team stash
+  if (t % 4 === 1) {
+    const need = 6 + 2 * Math.floor(t / 4);
+    return { npc, kind: "collect", res: "bag", item_name: "Wood", what: "Wood", need, have: 0, accepted: false,
+             gold: 20 + need * 6, xp: 10 + need * 3, item: "lunch", title: `Deliver ${need} Wood`,
+             desc: `I need ${need} logs for new crates. There's good timber in the woods north of town.` };
+  }
   const ores = ROCKS.filter(r => r.level <= Math.max(1, reach) && r.name !== "Coal");
   const ore = ores[Math.max(0, ores.length - 1 - (t % Math.min(3, ores.length)))];
   const bars = t % 3 === 2 && ore.name !== "Stone";
@@ -617,6 +624,7 @@ const STATIONS = [
   { id: "cart",  x: SHOP_ROOM.rx * W + 4,  y: SHOP_ROOM.ry * H + 5, name: "Upgrade Cart", verb: "browse upgrades" },
   { id: "forge", x: SHOP_ROOM.rx * W + 7,  y: SHOP_ROOM.ry * H + 5, name: "Forge",        verb: "smelt bars" },
   { id: "anvil", x: SHOP_ROOM.rx * W + 10, y: SHOP_ROOM.ry * H + 5, name: "Anvil",        verb: "craft gear" },
+  { id: "bench", x: SHOP_ROOM.rx * W + 13, y: SHOP_ROOM.ry * H + 5, name: "Workbench",    verb: "carve handles" },
   // Town folk who hand out team quests
   { id: "brea", npc: true, x: HOME_ROOM.rx * W + 11, y: HOME_ROOM.ry * H + 9, name: "Captain Brea", verb: "talk", icon: "⚔️",
     role: "Town guard", look: { skin: 3, hairStyle: 1, hairColor: 2, hatStyle: 0, hatColor: 5, shirt: 2, pants: 0, shoes: 1, pet: 0 } },
@@ -646,6 +654,17 @@ function vnoise(x, y) {
   return a + (b - a) * sm(xf) + (c - a) * sm(yf) + (a - b - c + d) * sm(xf) * sm(yf);
 }
 const inRoom = (x, y, r) => Math.floor(x / W) === r.rx && Math.floor(y / H) === r.ry;
+// Forests: thick woods (the two rooms north of town, plus patches across the map) — chop the trees for Wood
+const FOREST_ROOMS = [{ rx: HOME_ROOM.rx, ry: HOME_ROOM.ry - 1 }, { rx: SHOP_ROOM.rx, ry: SHOP_ROOM.ry - 1 }];
+function isForest(x, y) {
+  if (FOREST_ROOMS.some(r => inRoom(x, y, r))) return true;
+  if ([HOME_ROOM, SHOP_ROOM, CAVE_ROOM].some(r => inRoom(x, y, r))) return false;
+  return vnoise(x / 11 + 40, y / 11 + 40) > 0.68;
+}
+const treeKey = (x, y) => x + "," + y;
+const choppable = (x, y) => worldTile(x, y) === "tree" && x > 0 && y > 0 && x < WT - 1 && y < WT - 1;
+const chopChance = p => Math.min(0.95, 0.72 + 0.03 * p.pick);
+const TREE_REGROW_MS = 150000, WOOD_PER_HANDLE = 3;
 const worldTileCache = new Map();
 function worldTile(x, y) {
   if (x < 0 || y < 0 || x >= WT || y >= WT) return "edge";
@@ -657,7 +676,7 @@ function worldTile(x, y) {
     if (x >= HOUSE.x && x < HOUSE.x + HOUSE.w && y >= HOUSE.y && y < HOUSE.y + HOUSE.h) return "house";
     if (x === CAVE.x && y === CAVE.y) return "cave";
     if (y >= CAVE.y - 2 && y <= CAVE.y && Math.abs(x - CAVE.x) <= 2) return "cliff";
-    if (y === PATH_Y && x >= CAVE.x && x <= SHOP_ROOM.rx * W + 11) return "path";       // road: mine – home – shop
+    if (y === PATH_Y && x >= CAVE.x && x <= SHOP_ROOM.rx * W + 13) return "path";       // road: mine – home – shop
     if (x === CAVE.x && y > CAVE.y && y < PATH_Y) return "path";
     if (x === HOME.x && y > HOUSE.y + 1 && y < PATH_Y) return "path";
     if (STATIONS.some(st => st.x === x && y > st.y && y < PATH_Y)) return "path";      // spurs up to cart / forge / anvil
@@ -665,6 +684,7 @@ function worldTile(x, y) {
     const r = hash2(x, y);
     if (town) return r < 0.07 ? "flower" : "grass";
     if (vnoise(x / 7, y / 7) > 0.74) return "water";
+    if (isForest(x, y)) return r < 0.36 ? "tree" : r < 0.40 ? "flower" : "grass";
     if (r < 0.075) return "tree";
     if (r < 0.085) return "boulder";
     if (r < 0.13) return "flower";
@@ -702,7 +722,7 @@ function newGame() {
     players: [newPlayer("Player 1", 0), newPlayer("Player 2", 1)],
     shared: { gold: 0, bag: {}, bars: {} },
     team: { mined: 0, fails: 0, goldEarned: 0, ores: {}, kills: 0, maxDepth: 1 },
-    log: [], mines: {}, drops: [], nextDropId: 1, chat: [], nextChatId: 1, quests: {}, questsDone: {},
+    log: [], mines: {}, drops: [], nextDropId: 1, chat: [], nextChatId: 1, quests: {}, questsDone: {}, felled: {},
   };
   s.mines[1] = newMineLevel(1, s.players);
   for (const n of NPCS) s.quests[n.id] = makeQuest(s, n.id);
@@ -732,7 +752,7 @@ function migrate(s) {   // bring older saves up to date
       delete p.gold; delete p.bag; delete p.bars;
     }
   }
-  s.quests = s.quests || {}; s.questsDone = s.questsDone || {};
+  s.quests = s.quests || {}; s.questsDone = s.questsDone || {}; s.felled = s.felled || {};
   for (const n of NPCS) if (!s.quests[n.id]) s.quests[n.id] = makeQuest(s, n.id);
   s.chat = Array.isArray(s.chat) ? s.chat : []; s.nextChatId = s.nextChatId || 1;
   s.drops = Array.isArray(s.drops) ? s.drops : []; s.nextDropId = s.nextDropId || 1;
@@ -872,6 +892,21 @@ function applyAction(seat, action) {
              fx: { room: p.room, x: p.x, y: p.y, color: "#ffe070", label: `+${got} ${it.icon}` }, noSwing: true, notify: true };
   }
 
+  if (action.type === "chop") {
+    const tx = action.tx, ty = action.ty;
+    if (p.room !== "world" || (p.busy || 0) > now || !choppable(tx, ty) || state.felled[treeKey(tx, ty)]) return null;
+    if (Math.abs(p.x - tx) + Math.abs(p.y - ty) !== 1) return null;
+    p.busy = now + 420;
+    if (Math.random() >= chopChance(p)) return { quiet: true, ok: false, seat, weapon: "pick", fx: { room: "world", x: tx, y: ty, color: "#cfc7bb", label: "Thunk!" } };
+    const n = Math.random() < 0.15 ? 2 : 1;
+    sh.bag.Wood = (sh.bag.Wood || 0) + n; state.team.wood = (state.team.wood || 0) + n;
+    p.xp += 3; if (levelUp(p)) p.hp = maxHp(p);
+    const felled = Math.random() < 0.3;
+    if (felled) state.felled[treeKey(tx, ty)] = now + TREE_REGROW_MS;
+    return { quiet: true, ok: true, seat, weapon: "pick", leaves: true, felled,
+             fx: { room: "world", x: tx, y: ty, color: "#e0b070", label: `+${n} 🪵${felled ? " Timber!" : ""}` } };
+  }
+
   if (action.type === "mine" || action.type === "attack") {
     if (!isMine(p.room) || (p.busy || 0) > now) return null;
     p.busy = now + 420;
@@ -1009,11 +1044,20 @@ function applyAction(seat, action) {
     return { text, ok: true, seat, fx: fx("#ff8a1e", `+${n} ${barName(ore)}`) };
   }
 
+  if (action.type === "carve" && station.id === "bench") {
+    const n = Math.min(Math.max(1, Math.floor(action.count) || 1), Math.floor((sh.bag.Wood || 0) / WOOD_PER_HANDLE));
+    if (n < 1) return null;
+    sh.bag.Wood -= n * WOOD_PER_HANDLE; sh.bag.Handle = (sh.bag.Handle || 0) + n;
+    text = `${p.name} carved ${n} pickaxe handle${n > 1 ? "s" : ""} at the workbench.`;
+    addLog(text, true);
+    return { text, ok: true, seat, fx: fx("#e0b070", `+${n} Handle${n > 1 ? "s" : ""}`) };
+  }
+
   if (action.type === "craft" && station.id === "anvil") {
     const kind = action.item === "dagger" ? "dagger" : "pickaxe";
     const c = craftCost(p, kind);
-    if (!c || c.have < c.need) return null;
-    sh.bars[c.ore] -= c.need;
+    if (!c || c.have < c.need || c.haveHandles < c.handles) return null;
+    sh.bars[c.ore] -= c.need; sh.bag.Handle = (sh.bag.Handle || 0) - c.handles;
     if (kind === "dagger") p.dagger = c.tier; else p.pick = c.tier;
     const label = `${PICKAXES[c.tier].name} ${kind === "dagger" ? "Dagger" : "Pickaxe"}`;
     text = `${p.name} forged a ${label} on the anvil! ${kind === "dagger" ? "🗡️" : "⛏️"}`;
@@ -1040,6 +1084,7 @@ function hostTick() {
       p.hp = Math.min(maxHp(p), p.hp + 1); p.regen = now + 1200; simDirty = true;
     }
   });
+  for (const [k, t] of Object.entries(state.felled)) if (now >= t) { delete state.felled[k]; simDirty = true; }   // trees grow back
   // simulate every mine level that has someone in it
   for (const L of Object.values(state.mines)) {
     const key = "mine:" + L.depth;
@@ -1957,6 +2002,15 @@ function treeGrid() {
   return g.map(r => r.join(""));
 }
 const TREE_ART = paint(treeGrid(), { K: "#1e2a1a", L: "#3f9a46", l: "#7ad060", T: "#7a4e2a" }, { passes: 0 });
+function pineGrid() {
+  const g = newGrid(32);
+  rect(g, 14, 24, 17, 30, "T");
+  for (const [top, bot, half] of [[2, 11, 6], [7, 17, 9], [13, 25, 12]])
+    for (let y = top; y <= bot; y++) { const w = Math.round(half * (y - top + 1) / (bot - top + 1)); rect(g, 16 - w, y, 15 + w, y, "L"); rect(g, 16 - w, y, 16 - Math.ceil(w / 2), y, "l"); }
+  return g.map(r => r.join(""));
+}
+const PINE_ART = paint(pineGrid(), { K: "#14231a", L: "#2e7a44", l: "#4fa860", T: "#6a4024" }, { passes: 0 });
+let felledSig = "";
 const worldBgCache = new Map();
 // "Grass BG" (one room-sized texture) and "Brick Path" (one tile). Until they load the hand-drawn look is used.
 const WORLD_TEX = {};
@@ -2021,7 +2075,10 @@ function worldRoomBg(rx, ry) {
         const fc = ["#ffffff", "#ffe070", "#ff8ab0", "#b0a0ff"][Math.floor(hash2(gx, gy, 5) * 4)];
         for (let i = 0; i < 3; i++) { const bx = X + ri(26) * h + 2 * h, by = Y + ri(26) * h + 2 * h; px(bx, by, 2, 2, fc); px(bx + h / 2, by + h / 2, 1, 1, "#ffb030"); }
       }
-      if (t === "tree") over.push(() => g.drawImage(TREE_ART, X - TS * .15, Y - TS * .45, TS * 1.3, TS * 1.3));
+      if (t === "tree" && state && state.felled && state.felled[treeKey(gx, gy)]) {        // chopped down: a stump while it regrows
+        px(X + 9 * h, Y + 16 * h, 14, 10, "#7a4e2a"); px(X + 9 * h, Y + 14 * h, 14, 4, "#d8b07a"); px(X + 13 * h, Y + 15 * h, 6, 2, "#b08a54");
+        px(X + 6 * h, Y + 24 * h, 4, 2, "#5a3a22"); px(X + 22 * h, Y + 24 * h, 4, 2, "#5a3a22");
+      } else if (t === "tree") { const art = isForest(gx, gy) ? PINE_ART : TREE_ART; over.push(() => g.drawImage(art, X - TS * .15, Y - TS * .45, TS * 1.3, TS * 1.3)); }
       if (t === "boulder") over.push(() => g.drawImage(rockSprite(1, 0), X, Y, TS, TS));
     }
     over.forEach(f => f());
@@ -2098,7 +2155,18 @@ function cartGrid() {
   for (const cx of [9, 22]) { ell(g, cx, 26, 4, 4, "D"); ell(g, cx, 26, 1.6, 1.6, "d"); }  // wheels
   return g.map(r => r.join(""));
 }
+function benchGrid() {
+  const g = newGrid();
+  rect(g, 4, 15, 27, 18, "W"); rect(g, 4, 15, 27, 15, "Y"); rect(g, 4, 18, 27, 18, "w");      // table top
+  rect(g, 6, 19, 8, 28, "w"); rect(g, 23, 19, 25, 28, "w"); rect(g, 8, 24, 23, 25, "k");          // legs + brace
+  rect(g, 7, 11, 18, 14, "P"); rect(g, 7, 11, 18, 11, "p"); rect(g, 9, 7, 17, 10, "P"); rect(g, 9, 7, 17, 7, "p");   // stacked planks
+  rect(g, 20, 9, 27, 13, "S"); for (let x = 20; x <= 27; x += 2) put(g, x, 14, "S"); rect(g, 27, 8, 30, 12, "R");    // saw
+  ell(g, 13, 13, 1.2, 1.2, "k");
+  return g.map(r => r.join(""));
+}
 const STATION_ART = {
+  bench: paint(benchGrid(), { K: "#22182a", W: "#c88a4a", w: "#8a5a32", Y: "#e8b468", k: "#5a3a22", P: "#e0b070", p: "#f4d4a0",
+                              S: "#c8d4e8", R: "#b84a3a" }, { passes: 0 }),
   anvil: paint(anvilGrid(), { K: "#22182a", M: "#7e8aa0", m: "#5a627a", H: "#c8d4e8", W: "#b07a44", w: "#8a5a32" }, { passes: 0 }),
   forge: paint(forgeGrid(), { K: "#2a1418", G: "#b09888", g: "#7e6a66", F: "#e0502a", O: "#ff9a2a", Y: "#fff0a0" }, { passes: 0 }),
   cart:  paint(cartGrid(),  { K: "#22182a", W: "#c88a4a", w: "#9a6236", k: "#6a4024", Y: "#e8b468", y: "#b8844a",
@@ -2134,6 +2202,11 @@ function onResult(r) {
   if (r.weapon) swingWeapon[r.seat] = r.weapon; else if (r.fx && isMine(r.fx.room)) swingWeapon[r.seat] = "pick";
   if (r.private) { if (r.seat === net.seat) showResult(r, 2500); return; }
   if (r.notify) showResult({ ...r, neutral: true }, 3000);
+  if (r.leaves && r.fx && r.fx.room === myRoom()) {
+    const cx = (r.fx.x + .5) * TS, cy = (r.fx.y + .3) * TS;
+    for (let i = 0; i < (r.felled ? 26 : 10); i++) particles.push({ x: cx + (Math.random() - .5) * 30, y: cy, vx: (Math.random() - .5) * 6, vy: -Math.random() * 5,
+      life: 1, color: i % 3 ? "#5ab84a" : "#a0704a", size: S * (i % 2 ? 1.4 : 1) });
+  }
   if (r.quiet) {
     if (r.fx) { if (!r.noSwing) swing[r.seat] = tnow; if (r.fx.room === myRoom()) floaters.push({ x: (r.fx.x + .5) * TS, y: r.fx.y * TS, t0: tnow + 200, text: r.fx.label, color: r.fx.color }); }
     return;
@@ -2171,7 +2244,8 @@ function facing() {
     const e = enemyAt(L, x, y) || enemyAt(L, me.x, me.y); if (e) return { kind: "enemy", enemy: e };
     const r = rockAt(L, x, y); return r ? { kind: "rock", rock: r } : null;
   }
-  const st = stationAt(x, y); return st ? { kind: "station", station: st } : null;
+  const st = stationAt(x, y); if (st) return { kind: "station", station: st };
+  return choppable(x, y) && !(state.felled || {})[treeKey(x, y)] ? { kind: "tree", x, y } : null;
 }
 
 // ---- Team chat: kept in the shared state (last 40 lines), shown below the controls and as speech bubbles
@@ -2308,7 +2382,7 @@ function drawMinimap(now) {
   for (let ry = 0; ry < WR; ry++) for (let rx = 0; rx < WR; rx++) {
     const water = vnoise((rx * W + 7) / 7, (ry * H + 7) / 7) > 0.74;
     mmx.fillStyle = rx === HOME_ROOM.rx && ry === HOME_ROOM.ry ? "#ffd860" : rx === SHOP_ROOM.rx && ry === SHOP_ROOM.ry ? "#f08a3a"
-      : rx === CAVE_ROOM.rx && ry === CAVE_ROOM.ry ? "#8a8090" : water ? "#4a9ee0" : (rx + ry) % 2 ? "#5aa84a" : "#62b252";
+      : rx === CAVE_ROOM.rx && ry === CAVE_ROOM.ry ? "#8a8090" : water ? "#4a9ee0" : isForest(rx * W + 7, ry * H + 7) ? "#2e6e3a" : (rx + ry) % 2 ? "#5aa84a" : "#62b252";
     mmx.fillRect(rx * c, ry * c, c, c);
   }
   mmx.strokeStyle = "#ffffff"; mmx.lineWidth = 1.5; mmx.strokeRect(Math.floor(me.x / W) * c + .5, Math.floor(me.y / H) * c + .5, c - 1, c - 1);
@@ -2494,6 +2568,10 @@ function drawTooltip() {
       lock ? null : [`${act} to mine`, "#ffe070"],
     ];
     tx = rock.x; ty = rock.y; border = info.color;
+  } else if (f.kind === "tree") {
+    lines = [[isForest(f.x, f.y) ? "Pine tree" : "Oak tree", "#ffffff"],
+             [`${Math.round(chopChance(me) * 100)}% per chop · +1 🪵 Wood`, "#9af08a"], [`${act} to chop`, "#ffe070"]];
+    tx = f.x; ty = f.y; border = "#7ad060";
   } else if (f.kind === "enemy") {
     const e = f.enemy, T = ENEMY_TYPES[e.type];
     lines = [[`${e.boss ? "👑 " : ""}${enemyName(e)} · Lvl ${e.level}`, "#ffffff"], [`HP ${e.hp}/${e.max} · hits for ${e.dmg}`, "#ff9a8a"],
@@ -2505,6 +2583,7 @@ function drawTooltip() {
     if (st.id === "anvil") info = "Forge pickaxes & daggers from bars";
     if (st.id === "forge") info = "2 ore + 1 Coal → 1 bar";
     if (st.id === "cart") info = "Potions, charms, dynamite & more";
+    if (st.id === "bench") info = `${WOOD_PER_HANDLE} Wood → 1 pickaxe handle`;
     if (st.npc) { const q = state.quests[st.id]; info = !q ? st.role : !q.accepted ? "Has a quest for you!" : questReady(q) ? "Quest complete — hand it in!" : `${q.title} (${questProgress(q)}/${q.need})`; }
     lines = [[st.name, "#ffffff"], [info, "#c8d4ff"], [`${act} to ${st.verb}`, "#ffe070"]];
     tx = st.x; ty = st.y; border = "#f2c14e";
@@ -2559,6 +2638,8 @@ function frame(now) {
       if (L.tunnel) drawTunnel(L.tunnel, now);
     }
 
+    const fsig = Object.keys(state.felled || {}).join("|");      // a tree fell or grew back: redraw the room backgrounds
+    if (fsig !== felledSig) { felledSig = fsig; worldBgCache.clear(); }
     const things = [];
     if (isMine(room)) {
       for (const tx of TORCHES) {
@@ -2701,12 +2782,13 @@ function act(target) {
   const me = state.players[net.seat];
   const f = target || facing();
   if (me.ko) return;
-  if (!f) return floatText(isMine(me.room) ? "Face a rock or enemy" : "Explore! Face the cart, forge or anvil to use them", "#a8977c");
+  if (!f) return floatText(isMine(me.room) ? "Face a rock or enemy" : "Face a tree to chop it, or a station to use it", "#a8977c");
   if (f.kind === "station") return openMenu(f.station.id);
   if (!net.connected) return floatText("Waiting for your friend", "#a8977c");
   const tnow = performance.now();
   if (tnow < actReady) { actQueued = true; return; }   // pressed mid-swing: fire as soon as it's ready
   actReady = tnow + 430;
+  if (f.kind === "tree") return sendAction({ type: "chop", tx: f.x, ty: f.y, x: me.x, y: me.y, fx: me.fx, fy: me.fy, dir: me.dir, room: me.room });
   if (f.kind === "enemy") return sendAction({ type: "attack", enemyId: f.enemy.id, x: me.x, y: me.y, fx: me.fx, fy: me.fy, dir: me.dir, room: me.room });
   const lock = lockReason(me, f.rock.level);
   if (lock) return floatText(lock, "#e0675a");
@@ -2732,7 +2814,7 @@ function invLine(p) {
   const sh = stash();
   const ores = ROCKS.filter(r => sh.bag[r.name]).map(r => `${r.name} ${sh.bag[r.name]}`).join(" · ") || "none";
   const bars = SMELTABLE.filter(o => sh.bars[o]).map(o => `${barName(o)} ${sh.bars[o]}`).join(" · ") || "none";
-  return `<div class="menu-inv"><b>Team stash</b><br>🎒 Ore: ${ores}<br>🧱 Bars: ${bars}<br>🪙 Gold: ${sh.gold}</div>`;
+  return `<div class="menu-inv"><b>Team stash</b><br>🎒 Ore: ${ores}<br>🧱 Bars: ${bars}<br>🪵 Wood: ${sh.bag.Wood || 0} · Handles: ${sh.bag.Handle || 0}<br>🪙 Gold: ${sh.gold}</div>`;
 }
 
 function renderNpcMenu(st, me) {
@@ -2804,7 +2886,7 @@ function renderMenu() {
   el.classList.remove("hidden");
   const myTurn = net.connected;
   const st = STATIONS.find(s => s.id === menuOpen), sh = stash();
-  document.getElementById("menu-title").textContent = st.npc ? `💬 ${st.name}` : { cart: "🛒 Upgrade Cart", forge: "🔥 Forge", anvil: "⚒️ Anvil" }[st.id];
+  document.getElementById("menu-title").textContent = st.npc ? `💬 ${st.name}` : { cart: "🛒 Upgrade Cart", forge: "🔥 Forge", anvil: "⚒️ Anvil", bench: "🪚 Workbench" }[st.id];
   if (st.npc) return renderNpcMenu(st, me);
   const note = document.getElementById("menu-note");
   note.className = "menu-note" + (myTurn ? " turn" : "");
@@ -2836,6 +2918,15 @@ function renderMenu() {
     }).join("");
   }
 
+  if (st.id === "bench") {
+    const wood = sh.bag.Wood || 0, n = Math.floor(wood / WOOD_PER_HANDLE);
+    html = `<div class="mrow ${n ? "" : "dim"}"><div class="ic">🪵</div>
+      <div class="txt"><b>Pickaxe Handle <small>· team has ${sh.bag.Handle || 0}</small></b>
+        <small>${WOOD_PER_HANDLE} Wood <span class="${n ? "have" : "lack"}">(${wood})</span> → 1 handle. Every new pickaxe needs one.</small></div>
+      <div class="btns"><button data-carve="1" ${dis(n >= 1)}>Carve 1</button><button class="btn-gold" data-carve="${n}" ${dis(n >= 2)}>All (${n})</button></div></div>
+      <div class="mrow dim"><div class="ic">🌲</div><div class="txt"><b>Need wood?</b><small>Chop trees — the thick woods are just north of town.</small></div></div>`;
+  }
+
   if (st.id === "anvil") {
     const gear = (kind, icon, cur, curDesc) => {
       const c = craftCost(me, kind), Name = kind === "dagger" ? "Dagger" : "Pickaxe";
@@ -2844,8 +2935,8 @@ function renderMenu() {
       const next = PICKAXES[c.tier];
       const gain = kind === "dagger" ? `${2 + 2 * c.tier} damage` : `Power ${next.power}`;
       return out + `<div class="mrow">${barChip(c.ore)}<div class="txt"><b>Forge ${next.name} ${Name}</b>
-        <small>${gain} · needs ${c.need} ${c.bar}s <span class="${c.have >= c.need ? "have" : "lack"}">(team has ${c.have})</span></small></div>
-        <div class="btns"><button class="btn-gold" data-craft="${kind}" ${dis(c.have >= c.need)}>Forge</button></div></div>`;
+        <small>${gain} · needs ${c.need} ${c.bar}s <span class="${c.have >= c.need ? "have" : "lack"}">(team has ${c.have})</span>${c.handles ? ` + ${c.handles} Handle${c.handles > 1 ? "s" : ""} <span class="${c.haveHandles >= c.handles ? "have" : "lack"}">(${c.haveHandles})</span>` : ""}</small></div>
+        <div class="btns"><button class="btn-gold" data-craft="${kind}" ${dis(c.have >= c.need && c.haveHandles >= c.handles)}>Forge</button></div></div>`;
     };
     html = gear("pickaxe", "⛏️", me.pick, `Power ${PICKAXES[me.pick].power} · mines rocks up to level ${maxRock(me)}`)
          + gear("dagger", "🗡️", me.dagger || 0, `${daggerDamage(me)} damage per hit`);
@@ -2861,6 +2952,7 @@ document.getElementById("menu").addEventListener("click", e => {
   if (b.dataset.use !== undefined) return sendAction({ type: "useItem", slot: +b.dataset.use });
   if (b.dataset.drop !== undefined) return sendAction({ type: "drop", slot: +b.dataset.drop, n: +b.dataset.n });
   if (b.dataset.quest) return stationAction({ type: "quest", op: b.dataset.quest });
+  if (b.dataset.carve) return stationAction({ type: "carve", count: +b.dataset.carve });
   if (b.dataset.buy) stationAction({ type: "buy", item: b.dataset.buy });
   else if (b.dataset.smelt) stationAction({ type: "smelt", ore: b.dataset.smelt, count: +b.dataset.n });
   else if (b.dataset.craft !== undefined) stationAction({ type: "craft", item: b.dataset.craft || "pickaxe" });
@@ -2869,7 +2961,7 @@ document.getElementById("menu").addEventListener("click", e => {
 let actLabel = "";
 function updateActButton() {
   const f = state && facing();
-  const label = myRoom() === "world" ? "✋<br>Use" : f && f.kind === "enemy" ? "🗡️<br>Attack" : "⛏️<br>Mine";
+  const label = myRoom() === "world" ? (f && f.kind === "tree" ? "🪓<br>Chop" : "✋<br>Use") : f && f.kind === "enemy" ? "🗡️<br>Attack" : "⛏️<br>Mine";
   if (label !== actLabel) { document.getElementById("act-btn").innerHTML = label; actLabel = label; }
 }
 
