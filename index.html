@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mine with friends</title>
+<style>
+  :root {
+    --bg: #1b1712; --panel: #2a241c; --panel2: #352d23; --line: #4a3f31;
+    --text: #f1e6d3; --muted: #a8977c; --gold: #f2c14e; --good: #7bc96f; --bad: #e0675a;
+    --p1: #5fb3e6; --p2: #e68a5f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: "Trebuchet MS", system-ui, sans-serif; color: var(--text);
+    background: radial-gradient(ellipse at top, #2c241a, var(--bg) 70%); min-height: 100vh;
+  }
+  header { text-align: center; padding: 18px 12px 6px; }
+  h1 { margin: 0; font-size: 2.2rem; letter-spacing: 1px; color: var(--gold); text-shadow: 0 3px 0 #6b4f12; }
+  header p { margin: 4px 0 0; color: var(--muted); }
+  main { max-width: 1150px; margin: 0 auto; padding: 12px; }
+  .players { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .card { background: var(--panel); border: 2px solid var(--line); border-radius: 12px; padding: 14px; }
+  .player { transition: border-color .2s, box-shadow .2s, opacity .2s; opacity: .7; }
+  .player.active { opacity: 1; }
+  .player.p1.active { border-color: var(--p1); box-shadow: 0 0 18px #5fb3e655; }
+  .player.p2.active { border-color: var(--p2); box-shadow: 0 0 18px #e68a5f55; }
+  .phead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .pname { font-size: 1.3rem; font-weight: bold; background: none; border: none; color: inherit;
+           font-family: inherit; width: 60%; border-bottom: 1px dashed transparent; }
+  .pname:hover, .pname:focus { border-bottom-color: var(--muted); outline: none; }
+  .p1 .pname { color: var(--p1); } .p2 .pname { color: var(--p2); }
+  .turn-badge { font-size: .8rem; padding: 3px 8px; border-radius: 99px; background: var(--gold); color: #2a1d05; font-weight: bold; visibility: hidden; }
+  .player.active .turn-badge { visibility: visible; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 10px 0; }
+  .stat { background: var(--panel2); border-radius: 8px; padding: 6px 8px; }
+  .stat small { display: block; color: var(--muted); font-size: .72rem; text-transform: uppercase; }
+  .stat b { font-size: 1.05rem; }
+  .bar { height: 8px; background: #00000055; border-radius: 99px; overflow: hidden; margin-top: 4px; }
+  .bar > i { display: block; height: 100%; background: var(--gold); width: 0; transition: width .4s; }
+  .pick { display: flex; align-items: center; justify-content: space-between; gap: 8px; background: var(--panel2); border-radius: 8px; padding: 8px; }
+  .pick .info small { color: var(--muted); display: block; }
+  button { font-family: inherit; cursor: pointer; border-radius: 8px; border: 2px solid var(--line);
+           background: #4b3e2c; color: var(--text); padding: 7px 12px; font-weight: bold; }
+  button:hover:not(:disabled) { filter: brightness(1.15); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  .btn-gold { background: var(--gold); color: #2a1d05; border-color: #b68a22; }
+  .inv { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; min-height: 26px; }
+  .chip { font-size: .75rem; padding: 2px 7px; border-radius: 99px; background: #00000040; border: 1px solid var(--line); }
+
+  .center { margin-top: 12px; display: grid; grid-template-columns: 2fr 1fr; gap: 12px; }
+  .mine-title { display: flex; justify-content: space-between; align-items: baseline; }
+  .mine-title h2 { margin: 0 0 8px; font-size: 1.2rem; }
+  .mine-title span { color: var(--muted); font-size: .9rem; }
+  .rocks { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+  .rock { padding: 10px 6px; text-align: center; border-radius: 10px; background: var(--panel2); border: 2px solid var(--line); position: relative; }
+  .rock .gem { width: 38px; height: 34px; margin: 0 auto 4px; border-radius: 40% 55% 45% 50%;
+               box-shadow: inset -6px -6px 0 #00000055, inset 4px 4px 0 #ffffff33; }
+  .rock .rn { font-size: .85rem; font-weight: bold; display: block; }
+  .rock .rl { font-size: .7rem; color: var(--muted); display: block; }
+  .rock .rc { font-size: .75rem; display: block; margin-top: 3px; }
+  .rock.locked { filter: grayscale(1); }
+  .rock.locked .rc { color: var(--muted); }
+  .result { margin-top: 10px; padding: 10px; border-radius: 8px; background: #00000033; min-height: 44px; text-align: center; font-size: 1.05rem; }
+  .result.good { color: var(--good); } .result.bad { color: var(--bad); }
+  .log { max-height: 240px; overflow-y: auto; font-size: .85rem; padding-right: 4px; }
+  .log div { padding: 3px 0; border-bottom: 1px solid #ffffff10; }
+  .total .stats { grid-template-columns: repeat(2, 1fr); }
+  .milestones { font-size: .82rem; margin-top: 8px; }
+  .milestones div { padding: 2px 0; color: var(--muted); }
+  .milestones div.done { color: var(--good); }
+  footer { text-align: center; padding: 14px; color: var(--muted); font-size: .8rem; }
+  footer button { font-size: .75rem; padding: 4px 9px; margin-left: 6px; }
+  .shake { animation: shake .35s; }
+  @keyframes shake { 25% { transform: translateX(-4px) rotate(-2deg);} 75% { transform: translateX(4px) rotate(2deg);} }
+  @media (max-width: 780px) {
+    .players, .center { grid-template-columns: 1fr; }
+    .rocks { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>⛏️ Mine with friends</h1>
+  <p>Take turns picking a rock to mine. Higher-level rocks pay more but break your luck more often.</p>
+</header>
+
+<main>
+  <section class="players">
+    <div class="card player p1" id="player-0"></div>
+    <div class="card player p2" id="player-1"></div>
+  </section>
+
+  <section class="center">
+    <div class="card">
+      <div class="mine-title">
+        <h2 id="turn-label">Choose a rock</h2>
+        <span>Turn <b id="turn-num">1</b></span>
+      </div>
+      <div class="rocks" id="rocks"></div>
+      <div class="result" id="result">Pick a rock to start mining.</div>
+    </div>
+    <div class="card total">
+      <h2 style="margin:0 0 6px;font-size:1.2rem">🤝 Team progress</h2>
+      <div class="stats" id="team-stats"></div>
+      <div class="milestones" id="milestones"></div>
+      <h3 style="margin:12px 0 4px;font-size:1rem">Mining log</h3>
+      <div class="log" id="log"></div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  Progress saves automatically in this browser.
+  <button id="export">Export save</button>
+  <button id="import">Import save</button>
+  <button id="reset">Reset game</button>
+</footer>
+
+<script>
+// ---------- Game data ----------
+const ROCKS = [
+  { name: "Stone",     color: "#8a8a8a", value: 2,   xp: 2 },
+  { name: "Coal",      color: "#2e2e2e", value: 4,   xp: 4 },
+  { name: "Copper",    color: "#c4733b", value: 7,   xp: 6 },
+  { name: "Iron",      color: "#b9a99a", value: 12,  xp: 9 },
+  { name: "Silver",    color: "#d8dde3", value: 20,  xp: 13 },
+  { name: "Gold",      color: "#f2c14e", value: 32,  xp: 18 },
+  { name: "Emerald",   color: "#3fbf6f", value: 50,  xp: 25 },
+  { name: "Ruby",      color: "#d6334a", value: 78,  xp: 34 },
+  { name: "Diamond",   color: "#8fe6f2", value: 120, xp: 46 },
+  { name: "Mythril",   color: "#a77bf2", value: 190, xp: 62 },
+].map((r, i) => ({ ...r, level: i + 1 }));
+
+const PICKAXES = [
+  { name: "Wooden",   power: 1,  cost: 0 },
+  { name: "Stone",    power: 2,  cost: 25 },
+  { name: "Copper",   power: 3,  cost: 60 },
+  { name: "Iron",     power: 4,  cost: 130 },
+  { name: "Silver",   power: 5,  cost: 260 },
+  { name: "Gold",     power: 6,  cost: 480 },
+  { name: "Emerald",  power: 7,  cost: 850 },
+  { name: "Ruby",     power: 8,  cost: 1400 },
+  { name: "Diamond",  power: 9,  cost: 2300 },
+  { name: "Mythril",  power: 10, cost: 3800 },
+];
+
+const MILESTONES = [
+  { label: "Mine 25 rocks together",       test: t => t.mined >= 25 },
+  { label: "Earn 500 gold together",       test: t => t.goldEarned >= 500 },
+  { label: "Both reach Miner level 5",     test: (t, p) => p.every(x => x.level >= 5) },
+  { label: "Mine a Diamond",               test: t => (t.ores.Diamond || 0) > 0 },
+  { label: "Mine every type of rock",      test: t => ROCKS.every(r => (t.ores[r.name] || 0) > 0) },
+  { label: "Both own a Mythril pickaxe",   test: (t, p) => p.every(x => x.pick >= 9) },
+];
+
+const SAVE_KEY = "mine-with-friends-save-v1";
+
+// ---------- State ----------
+function newPlayer(name) {
+  return { name, gold: 0, xp: 0, level: 1, pick: 0, mined: 0, fails: 0, streak: 0, ores: {} };
+}
+function newGame() {
+  return {
+    players: [newPlayer("Player 1"), newPlayer("Player 2")],
+    current: 0, turn: 1,
+    team: { mined: 0, fails: 0, goldEarned: 0, ores: {} },
+    log: [],
+  };
+}
+let state = load() || newGame();
+
+function load() {
+  try { const s = JSON.parse(localStorage.getItem(SAVE_KEY)); return s && s.players ? s : null; }
+  catch { return null; }
+}
+function save() {
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); } catch {}
+}
+
+// ---------- Rules ----------
+const xpForLevel = lvl => Math.round(20 * Math.pow(lvl, 1.5));
+
+// Highest rock a player can attempt: limited by miner level and pickaxe.
+function maxRock(p) { return Math.min(10, Math.max(1, Math.min(p.level, PICKAXES[p.pick].power + 1))); }
+
+// Success chance: pickaxe power vs rock level.
+function successChance(p, rock) {
+  const power = PICKAXES[p.pick].power;
+  const diff = power - rock.level;           // positive = pickaxe stronger than rock
+  let c = 0.7 + diff * 0.08 + Math.min(p.streak, 5) * 0.01;
+  return Math.max(0.15, Math.min(0.95, c));
+}
+
+function mine(rockIdx) {
+  const p = state.players[state.current];
+  const rock = ROCKS[rockIdx];
+  if (rock.level > maxRock(p)) return;
+
+  const chance = successChance(p, rock);
+  const ok = Math.random() < chance;
+  const res = document.getElementById("result");
+  let msg;
+
+  if (ok) {
+    const bonus = Math.random() < 0.1 ? 2 : 1;      // 10% chance of a double haul
+    const gold = rock.value * bonus;
+    p.gold += gold; p.xp += rock.xp; p.mined++; p.streak++;
+    p.ores[rock.name] = (p.ores[rock.name] || 0) + bonus;
+    state.team.mined++; state.team.goldEarned += gold;
+    state.team.ores[rock.name] = (state.team.ores[rock.name] || 0) + bonus;
+    msg = `${p.name} mined ${bonus > 1 ? "a DOUBLE haul of " : ""}${rock.name}! +${gold} gold, +${rock.xp} XP`;
+    let leveled = false;
+    while (p.xp >= xpForLevel(p.level) && p.level < 10) { p.xp -= xpForLevel(p.level); p.level++; leveled = true; }
+    if (leveled) msg += ` — reached Miner level ${p.level}!`;
+    res.className = "result good";
+  } else {
+    p.fails++; p.streak = 0; state.team.fails++;
+    const consolation = Math.max(1, Math.floor(rock.xp / 4));
+    p.xp += consolation;
+    msg = `${p.name} swung at ${rock.name}… and it didn't break. (+${consolation} XP for trying)`;
+    res.className = "result bad";
+    const el = document.querySelector(`[data-rock="${rockIdx}"]`);
+    if (el) { el.classList.remove("shake"); void el.offsetWidth; el.classList.add("shake"); }
+  }
+  res.textContent = msg;
+  addLog(msg, ok);
+  endTurn();
+}
+
+function upgrade(i) {
+  const p = state.players[i];
+  if (i !== state.current) return;
+  const next = PICKAXES[p.pick + 1];
+  if (!next || p.gold < next.cost) return;
+  p.gold -= next.cost; p.pick++;
+  const msg = `${p.name} upgraded to a ${next.name} pickaxe!`;
+  addLog(msg, true);
+  const res = document.getElementById("result");
+  res.className = "result good"; res.textContent = msg + " (Upgrading doesn't use your turn.)";
+  save(); render();
+}
+
+function endTurn() {
+  state.current = 1 - state.current;
+  if (state.current === 0) state.turn++;
+  save(); render();
+}
+
+function addLog(text, ok) {
+  state.log.unshift({ text, ok, turn: state.turn });
+  state.log = state.log.slice(0, 60);
+}
+
+// ---------- Rendering ----------
+function renderPlayer(i) {
+  const p = state.players[i];
+  const el = document.getElementById("player-" + i);
+  el.classList.toggle("active", state.current === i);
+  const pick = PICKAXES[p.pick], next = PICKAXES[p.pick + 1];
+  const need = xpForLevel(p.level);
+  const pct = p.level >= 10 ? 100 : Math.min(100, (p.xp / need) * 100);
+  const ores = ROCKS.filter(r => p.ores[r.name]).map(r =>
+    `<span class="chip" style="border-color:${r.color}">${r.name} ×${p.ores[r.name]}</span>`).join("")
+    || `<span class="chip">No ores yet</span>`;
+  el.innerHTML = `
+    <div class="phead">
+      <input class="pname" value="${escapeHtml(p.name)}" maxlength="16" aria-label="Player name" data-name="${i}">
+      <span class="turn-badge">YOUR TURN</span>
+    </div>
+    <div class="stats">
+      <div class="stat"><small>Gold</small><b>🪙 ${p.gold}</b></div>
+      <div class="stat"><small>Miner level</small><b>${p.level}${p.level >= 10 ? " (max)" : ""}</b>
+        <div class="bar"><i style="width:${pct}%"></i></div></div>
+      <div class="stat"><small>Mined / failed</small><b>${p.mined} / ${p.fails}</b></div>
+    </div>
+    <div class="pick">
+      <div class="info"><b>⛏️ ${pick.name} pickaxe</b><small>Power ${pick.power} · can reach rock lvl ${maxRock(p)}</small></div>
+      ${next ? `<button class="btn-gold" data-up="${i}" ${state.current !== i || p.gold < next.cost ? "disabled" : ""}>
+                 Upgrade to ${next.name} · ${next.cost}🪙</button>`
+             : `<span class="chip">Max pickaxe</span>`}
+    </div>
+    <div class="inv">${ores}</div>`;
+}
+
+function renderRocks() {
+  const p = state.players[state.current];
+  const limit = maxRock(p);
+  document.getElementById("turn-label").textContent = `${p.name}, choose a rock`;
+  document.getElementById("turn-num").textContent = state.turn;
+  document.getElementById("rocks").innerHTML = ROCKS.map((r, i) => {
+    const locked = r.level > limit;
+    const why = r.level > p.level ? `Need miner lvl ${r.level}` : `Need better pickaxe`;
+    return `<button class="rock ${locked ? "locked" : ""}" data-rock="${i}" ${locked ? "disabled" : ""}>
+      <div class="gem" style="background:${r.color}"></div>
+      <span class="rn">${r.name}</span><span class="rl">Level ${r.level} · ${r.value}🪙</span>
+      <span class="rc">${locked ? "🔒 " + why : Math.round(successChance(p, r) * 100) + "% success"}</span>
+    </button>`;
+  }).join("");
+}
+
+function renderTeam() {
+  const t = state.team;
+  const rate = t.mined + t.fails ? Math.round(t.mined / (t.mined + t.fails) * 100) : 0;
+  const types = ROCKS.filter(r => t.ores[r.name]).length;
+  document.getElementById("team-stats").innerHTML = `
+    <div class="stat"><small>Rocks mined</small><b>${t.mined}</b></div>
+    <div class="stat"><small>Gold earned</small><b>🪙 ${t.goldEarned}</b></div>
+    <div class="stat"><small>Success rate</small><b>${rate}%</b></div>
+    <div class="stat"><small>Rock types found</small><b>${types} / 10</b></div>`;
+  const done = MILESTONES.filter(m => m.test(t, state.players)).length;
+  document.getElementById("milestones").innerHTML =
+    `<b>Milestones ${done}/${MILESTONES.length}</b>` +
+    MILESTONES.map(m => { const ok = m.test(t, state.players);
+      return `<div class="${ok ? "done" : ""}">${ok ? "✅" : "⬜"} ${m.label}</div>`; }).join("");
+  document.getElementById("log").innerHTML = state.log.map(l =>
+    `<div style="color:${l.ok ? "var(--text)" : "var(--muted)"}">T${l.turn}: ${escapeHtml(l.text)}</div>`).join("")
+    || `<div style="color:var(--muted)">Nothing mined yet.</div>`;
+}
+
+function render() { renderPlayer(0); renderPlayer(1); renderRocks(); renderTeam(); }
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// ---------- Events ----------
+document.addEventListener("click", e => {
+  const rock = e.target.closest("[data-rock]");
+  if (rock && !rock.disabled) return mine(+rock.dataset.rock);
+  const up = e.target.closest("[data-up]");
+  if (up && !up.disabled) return upgrade(+up.dataset.up);
+});
+document.addEventListener("change", e => {
+  if (e.target.dataset.name !== undefined) {
+    const i = +e.target.dataset.name;
+    state.players[i].name = e.target.value.trim() || `Player ${i + 1}`;
+    save(); render();
+  }
+});
+document.getElementById("reset").onclick = () => {
+  if (confirm("Reset both players and team progress?")) { state = newGame(); save(); render();
+    document.getElementById("result").className = "result"; document.getElementById("result").textContent = "New game! Pick a rock."; }
+};
+document.getElementById("export").onclick = () => {
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+  a.download = "mine-with-friends-save.json"; a.click();
+};
+document.getElementById("import").onclick = () => {
+  const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".json,application/json";
+  inp.onchange = async () => {
+    try { const s = JSON.parse(await inp.files[0].text()); if (!s.players) throw 0; state = s; save(); render(); }
+    catch { alert("That doesn't look like a Mine with friends save file."); }
+  };
+  inp.click();
+};
+
+render();
+</script>
+</body>
+</html>
