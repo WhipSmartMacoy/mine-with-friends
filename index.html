@@ -60,12 +60,46 @@
   .result { margin-top: 8px; padding: 8px; border-radius: 8px; background: #00000033; min-height: 38px; text-align: center; }
   .result.good { color: var(--good); } .result.bad { color: var(--bad); }
 
-  /* Touch controls */
-  .touch { display: none; justify-content: space-between; align-items: center; margin-top: 10px; user-select: none; }
-  .dpad { display: grid; grid-template-columns: repeat(3, 52px); grid-template-rows: repeat(3, 52px); gap: 4px; }
-  .dpad button, .mine-btn { font-size: 1.3rem; padding: 0; touch-action: none; }
-  .mine-btn { width: 110px; height: 110px; border-radius: 50%; background: var(--gold); color: #2a1d05; border-color: #b68a22; }
-  @media (hover: none), (max-width: 780px) { .touch { display: flex; } }
+  .mini { font-size: .9rem; color: var(--muted); }
+  .mini b { color: var(--text); }
+  .view-btn { font-size: .8rem; padding: 5px 10px; }
+  .keys { margin-top: 6px; }
+
+  /* Play area: canvas on top, touch controls underneath (or either side in landscape) */
+  .play { display: grid; grid-template-areas: "stage stage" "dpad mine"; grid-template-columns: 1fr auto; gap: 10px; align-items: center; }
+  .stage { grid-area: stage; }
+  .dpad { grid-area: dpad; display: grid; grid-template-columns: repeat(3, 58px); grid-template-rows: repeat(3, 58px); gap: 5px; user-select: none; }
+  .dpad button, .mine-btn { font-size: 1.4rem; padding: 0; touch-action: none; user-select: none; -webkit-user-select: none; }
+  .mine-btn { grid-area: mine; width: 112px; height: 112px; border-radius: 50%; background: var(--gold); color: #2a1d05;
+              border-color: #b68a22; font-size: 1.3rem; line-height: 1.2; justify-self: end; margin-right: 6px; }
+  .mine-btn:active, .dpad button:active { filter: brightness(1.3); transform: scale(.96); }
+  .touch { display: none; }
+  @media (hover: none), (max-width: 780px) {
+    .touch { display: grid; }
+    .mine-btn.touch { display: block; }
+    .keys { display: none; }
+  }
+  @media (max-width: 780px) {
+    header { padding: 8px 8px 0; }
+    h1 { font-size: 1.45rem; }
+    header p { display: none; }
+    main { padding: 6px; }
+    .card { padding: 8px; border-radius: 10px; }
+    .connbar { padding: 6px 8px; font-size: .85rem; gap: 6px; }
+    .connbar .code { font-size: 1rem; }
+    .connbar button { font-size: .72rem; padding: 4px 8px; }
+    #mine { border-width: 2px; }
+    .turnline { font-size: .95rem; }
+    .result { font-size: .9rem; padding: 6px; min-height: 0; }
+  }
+  /* Phones held sideways: d-pad left, mine right, game in the middle */
+  @media (orientation: landscape) and (max-height: 540px) {
+    header { display: none; }
+    .play { grid-template-areas: "dpad stage mine"; grid-template-columns: auto 1fr auto; }
+    #mine { max-height: 78vh; width: auto; max-width: 100%; margin: 0 auto; }
+    .dpad { grid-template-columns: repeat(3, 50px); grid-template-rows: repeat(3, 50px); }
+    .mine-btn { width: 96px; height: 96px; margin: 0; }
+  }
 
   .players { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
   .player { transition: border-color .2s, box-shadow .2s; }
@@ -137,19 +171,21 @@
     </div>
 
     <div class="card">
-      <div class="stage"><canvas id="mine"></canvas></div>
+      <div class="play">
+        <div class="stage"><canvas id="mine"></canvas></div>
+        <div class="dpad touch">
+          <span></span><button data-dir="up" aria-label="Up">▲</button><span></span>
+          <button data-dir="left" aria-label="Left">◀</button><span></span><button data-dir="right" aria-label="Right">▶</button>
+          <span></span><button data-dir="down" aria-label="Down">▼</button><span></span>
+        </div>
+        <button class="mine-btn touch" id="mine-btn">⛏️<br>Mine</button>
+      </div>
       <div class="hud">
         <div class="turnline" id="turn-line"></div>
-        <div class="keys"><kbd>WASD</kbd>/<kbd>Arrows</kbd> walk · <kbd>Space</kbd> mine the rock you face · or click a rock next to you · Turn <b id="turn-num">1</b></div>
+        <div class="mini" id="mini-stats"></div>
+        <button id="view-btn" class="view-btn"></button>
       </div>
-      <div class="touch">
-        <div class="dpad">
-          <span></span><button data-dir="up">▲</button><span></span>
-          <button data-dir="left">◀</button><span></span><button data-dir="right">▶</button>
-          <span></span><button data-dir="down">▼</button><span></span>
-        </div>
-        <button class="mine-btn" id="mine-btn">⛏️ Mine</button>
-      </div>
+      <div class="keys"><kbd>WASD</kbd>/<kbd>Arrows</kbd> walk · <kbd>Space</kbd> mine the rock you face · or click a rock next to you · Turn <b id="turn-num">1</b></div>
       <div class="result" id="result">Waiting for both players…</div>
     </div>
 
@@ -405,7 +441,7 @@ function hostLobby(code) {
     const saved = readJSON(saveKey(code));
     state = saved && saved.players ? migrate(saved) : newGame();
     state.players[0].name = name;
-    writeJSON(PREFS_KEY, { name, lastCode: code, lastRole: "host" });
+    writeJSON(PREFS_KEY, { ...(readJSON(PREFS_KEY) || {}), name, lastCode: code, lastRole: "host" });
     save(); enterGame();
   });
 
@@ -495,7 +531,7 @@ function joinLobby(code) {
         if (!first && walkable(state, mine.x, mine.y)) Object.assign(state.players[1], { x: mine.x, y: mine.y, dir: mine.dir });
         if (first) {
           net.isHost = false; net.seat = 1; net.code = code;
-          writeJSON(PREFS_KEY, { name, lastCode: code, lastRole: "guest" });
+          writeJSON(PREFS_KEY, { ...(readJSON(PREFS_KEY) || {}), name, lastCode: code, lastRole: "guest" });
           snapDisplay(); enterGame();
         }
         save(); setConnected(true); onResult(msg.result);
@@ -672,9 +708,37 @@ function rockSprite(level, cracks) {
 
 // ================= Room rendering =================
 const canvas = document.getElementById("mine");
-canvas.width = W * TS; canvas.height = H * TS;
-const ctx = canvas.getContext("2d");
+const world = mkCanvas(W * TS, H * TS);          // whole room is drawn here…
+const ctx = world.getContext("2d");
 ctx.imageSmoothingEnabled = false;
+const vctx = canvas.getContext("2d");              // …then the visible part is copied to the screen
+const isTouch = matchMedia("(hover: none)").matches;
+// "follow" = zoomed camera that tracks your miner (default on small screens); "full" = whole mine.
+let viewMode = (readJSON(PREFS_KEY) || {}).view || (window.innerWidth < 780 ? "follow" : "full");
+let view = { x: 0, y: 0, w: W * TS, h: H * TS };
+let ui = 1;   // text scale, bigger when zoomed in so labels stay readable
+
+function updateView() {
+  if (viewMode === "follow") {
+    const vw = 11 * TS, vh = 9 * TS, d = disp[net.seat];
+    const cx = (d.x + .5) * TS, cy = (d.y + .5) * TS;
+    view = { w: vw, h: vh,
+             x: Math.round(Math.max(0, Math.min(W * TS - vw, cx - vw / 2))),
+             y: Math.round(Math.max(0, Math.min(H * TS - vh, cy - vh / 2))) };
+    ui = 1.35;
+  } else {
+    view = { x: 0, y: 0, w: W * TS, h: H * TS };
+    ui = window.innerWidth < 780 ? 1.6 : 1;
+  }
+  if (canvas.width !== view.w || canvas.height !== view.h) {
+    canvas.width = view.w; canvas.height = view.h; vctx.imageSmoothingEnabled = false;
+  }
+}
+function setViewMode(m) {
+  viewMode = m;
+  writeJSON(PREFS_KEY, { ...(readJSON(PREFS_KEY) || {}), view: m });
+  document.getElementById("view-btn").textContent = m === "follow" ? "🗺️ Show whole mine" : "🔍 Zoom in";
+}
 
 const TORCHES = [4, 10, 15];
 const background = (() => {
@@ -739,6 +803,7 @@ function facingRock() {
 }
 
 function drawLabel(text, x, y, color, size = 15) {
+  size = Math.round(size * ui);
   ctx.font = `bold ${size}px "Trebuchet MS", sans-serif`;
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
   ctx.lineWidth = 4; ctx.strokeStyle = "#120f0c"; ctx.strokeText(text, x, y);
@@ -761,7 +826,7 @@ function drawRock(r, now) {
   // level badge — green if you can mine it, red if it's still too tough for you
   const me = state.players[net.seat], ok = !lockReason(me, r.level);
   const bx = r.x * TS + TS - 9, by = r.y * TS + TS - 9;
-  ctx.beginPath(); ctx.arc(bx, by, 9, 0, Math.PI * 2);
+  ctx.beginPath(); ctx.arc(bx, by, 9 * Math.min(ui, 1.25), 0, Math.PI * 2);
   ctx.fillStyle = ok ? "#2f6b2a" : "#7a2620"; ctx.fill();
   ctx.lineWidth = 2; ctx.strokeStyle = "#120f0c"; ctx.stroke();
   drawLabel(String(r.level), bx, by + 1, "#fff", 11);
@@ -788,9 +853,9 @@ function drawPlayer(seat, now) {
   }
   ctx.globalAlpha = 1;
   const name = present ? p.name : p.name + " (away)";
-  drawLabel(name, x + TS / 2, y - 12, seat === 0 ? "#8fd0ff" : "#ffb08a", 14);
+  drawLabel(name, x + TS / 2, y - 10 * ui, seat === 0 ? "#8fd0ff" : "#ffb08a", 14);
   if (net.connected && state.current === seat) {
-    const by = y - 30 + Math.sin(now / 180) * 3;
+    const by = y - 12 - 18 * ui + Math.sin(now / 180) * 3;
     ctx.fillStyle = "#f2c14e"; ctx.strokeStyle = "#120f0c"; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(x + TS / 2 - 7, by - 6); ctx.lineTo(x + TS / 2 + 7, by - 6); ctx.lineTo(x + TS / 2, by + 3); ctx.closePath();
     ctx.fill(); ctx.stroke();
@@ -806,15 +871,17 @@ function drawTooltip(now) {
   const lines = [
     [`${info.name} · Lvl ${rock.level}${rock.cracks ? " · cracked" : ""}`, "#f1e6d3"],
     lock ? ["🔒 " + lock, "#e0675a"] : [`${Math.round(successChance(me, rock) * 100)}% success · ${info.value}🪙`, "#7bc96f"],
-    lock ? null : myTurn ? ["[Space] to mine", "#f2c14e"] : ["Wait for your turn", "#a8977c"],
+    lock ? null : myTurn ? [isTouch ? "Tap ⛏️ Mine" : "[Space] to mine", "#f2c14e"] : ["Wait for your turn", "#a8977c"],
   ].filter(Boolean);
-  ctx.font = 'bold 13px "Trebuchet MS", sans-serif';
-  const w = Math.max(...lines.map(l => ctx.measureText(l[0]).width)) + 18, h = lines.length * 17 + 10;
+  const fs = Math.round(13 * ui), lh = Math.round(17 * ui);
+  ctx.font = `bold ${fs}px "Trebuchet MS", sans-serif`;
+  const w = Math.max(...lines.map(l => ctx.measureText(l[0]).width)) + 18, h = lines.length * lh + 10;
   let x = (rock.x + .5) * TS - w / 2, y = rock.y * TS - h - 8;
-  x = Math.max(4, Math.min(canvas.width - w - 4, x)); if (y < 4) y = (rock.y + 1) * TS + 6;
+  x = Math.max(view.x + 4, Math.min(view.x + view.w - w - 4, x));
+  if (y < view.y + 4) y = (rock.y + 1) * TS + 6;
   roundRect(x, y, w, h, 7); ctx.fillStyle = "#120f0cdd"; ctx.fill(); ctx.strokeStyle = info.color; ctx.lineWidth = 2; ctx.stroke();
   ctx.textAlign = "left"; ctx.textBaseline = "top";
-  lines.forEach((l, i) => { ctx.fillStyle = l[1]; ctx.fillText(l[0], x + 9, y + 7 + i * 17); });
+  lines.forEach((l, i) => { ctx.fillStyle = l[1]; ctx.fillText(l[0], x + 9, y + 7 + i * lh); });
 }
 
 function frame(now) {
@@ -826,6 +893,7 @@ function frame(now) {
     else { d.x += Math.sign(dx) * Math.min(Math.abs(dx), sp); d.y += Math.sign(dy) * Math.min(Math.abs(dy), sp); }
   }
   stepInput(now);
+  updateView();
 
   ctx.drawImage(background, 0, 0);
   for (const tx of TORCHES) {   // flickering torches
@@ -852,6 +920,7 @@ function frame(now) {
   }
   ctx.globalAlpha = 1;
   drawTooltip(now);
+  vctx.drawImage(world, view.x, view.y, view.w, view.h, 0, 0, view.w, view.h);
   requestAnimationFrame(frame);
 }
 
@@ -899,7 +968,8 @@ window.addEventListener("blur", () => (held.length = 0));
 
 canvas.addEventListener("pointerdown", e => {
   const rect = canvas.getBoundingClientRect();
-  const tx = Math.floor((e.clientX - rect.left) / rect.width * W), ty = Math.floor((e.clientY - rect.top) / rect.height * H);
+  const tx = Math.floor((view.x + (e.clientX - rect.left) / rect.width * view.w) / TS);
+  const ty = Math.floor((view.y + (e.clientY - rect.top) / rect.height * view.h) / TS);
   const rock = rockAt(state, tx, ty), me = state.players[net.seat];
   if (!rock) return;
   if (!adjacent(me, rock)) return floatText("Walk next to that rock first", "#a8977c");
@@ -1016,7 +1086,12 @@ function renderTurnLine() {
     : `${escapeHtml(state.players[state.current].name)}'s turn — you can still walk around`;
 }
 
-function render() { renderPlayer(0); renderPlayer(1); renderTeam(); renderTurnLine(); }
+function renderMini() {
+  const me = state.players[net.seat];
+  document.getElementById("mini-stats").innerHTML =
+    `🪙 <b>${me.gold}</b> · Lvl <b>${me.level}</b> · ⛏️ <b>${PICKAXES[me.pick].name}</b>`;
+}
+function render() { renderPlayer(0); renderPlayer(1); renderTeam(); renderTurnLine(); renderMini(); }
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -1027,6 +1102,8 @@ document.addEventListener("click", e => {
   const up = e.target.closest("[data-up]");
   if (up && !up.disabled) sendAction({ type: "upgrade" });
 });
+document.getElementById("view-btn").onclick = () => setViewMode(viewMode === "follow" ? "full" : "follow");
+setViewMode(viewMode);
 document.getElementById("create-btn").onclick = () => hostLobby();
 document.getElementById("reopen-btn").onclick = e => hostLobby(e.target.dataset.code);
 document.getElementById("join-btn").onclick = () => joinLobby(document.getElementById("join-code").value);
