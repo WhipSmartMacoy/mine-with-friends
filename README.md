@@ -10,11 +10,12 @@ A turn-based online mining game for two players, each on their own device.
 Players connect directly browser-to-browser (via [PeerJS](https://peerjs.com)), so no server or account is needed.
 
 ## How to play
-- Players take turns, and you can only act on your own turn.
-- Pick a rock (levels 1–10) to mine. The game decides in the background if you succeed. Your odds depend on your pickaxe's power compared to the rock's level.
-- Success earns gold and XP (10% chance of a double haul). A failed swing still gives a little XP.
-- Level up your miner to unlock higher rocks, and spend gold to upgrade your pickaxe (Wooden → Mythril). Upgrading doesn't use your turn.
-- The Team panel tracks your combined progress and shared milestones.
+- Each player is a pixel-art miner in a shared mine room. **Walk any time** with WASD / arrow keys (or the on-screen pad on phones). Walking never uses a turn.
+- The room is scattered with random rocks, levels 1–10. Each rock shows its level: green means you can mine it, red means it's still too tough.
+- On **your turn**, walk up to a rock, face it and press **Space** (or click/tap the rock). Mining uses your turn.
+- The game decides in the background if you succeed, based on your pickaxe vs. the rock's level. Success shatters the rock for gold and XP, and a new random rock appears. A miss cracks the rock, making it easier next time.
+- Level up to reach higher rocks, and spend gold on pickaxe upgrades (Wooden → Mythril). Upgrading doesn't use your turn.
+- The Team panel tracks combined progress and shared milestones.
 
 ## Saving
 Each player's progress and the team's total progress are saved in **both** players' browsers. To continue later, the host clicks **Reopen lobby** (same code) and the friend rejoins with that code. If either player's save is further ahead, that one is used. **Export save** downloads a backup.
