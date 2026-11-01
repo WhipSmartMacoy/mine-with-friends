@@ -28,11 +28,13 @@ Players connect directly browser-to-browser (via [PeerJS](https://peerjs.com)), 
 
 ### Controls & gear
 - Walk with WASD / arrows (diagonals too) or the on-screen joystick on phones. Hold Space / the action button to keep swinging.
-- **Health** ❤️: at 0 you're knocked out and wake at home base.
+- **Health** ❤️: it does **not** refill on its own — eat food or drink potions. At 0 you're knocked out and wake at home base.
 - **Shop**: Forge (2 ore + 1 Coal → 1 bar), Anvil (forge your next **pickaxe** from bars + a handle, or **dagger** from bars), Workbench (Wood → handles), Cart (🧪 Potion, 🥪 Lunch, 🍀 Charm, 🧨 Dynamite, 🪨 Coal, 🎒 Bigger Backpack).
 - **Backpack** 🎒: tap **Bag** on the health bar (or press **B** / **I**). It starts at 3×3 slots and grows up to 5×5 with Bigger Backpack upgrades from the cart. Potions, lunches, charms and dynamite go here; tap an item to **Use** or **Drop** it.
 - **Forests & wood** 🌲: thick pine woods grow north of town (and in patches across the map). Face a tree and press Space / tap **Chop** for 🪵 Wood; sometimes it falls ("Timber!") and leaves a stump that regrows in a few minutes.
 - **Workbench** 🪚 (shop, far right): carve 3 Wood into a pickaxe handle. **Every new pickaxe needs handles**: 1 up to Iron, 2 for Silver–Ruby, 3 for Diamond and Mythril plus its bars.
+- **Hunting & foraging** 🐔🐷🐮: chickens, pigs and cows roam the forests (they run when you get close). Hunt them with your dagger for raw meat. Apple 🍎 and orange 🍊 trees grow at home base and in the woods — pick the fruit (it grows back).
+- **Cooking** 🔥: the Campfire at home base turns ingredients from your backpack into food: Grilled Chicken, Crispy Bacon, Steak, Apple Pie, Fruit Salad and Hearty Stew (full heal). Raw meat can't be eaten.
 - **Quests** 📜: talk to the town folk (face them and press Space / tap Use). A gold **!** means a new quest, **?** means it's ready to hand in. Quests are shared by the team, and both players get the XP.
   - ⚔️ **Captain Brea** (home base): defeat a number of monsters, sometimes a specific kind.
   - 👑 **Old Moss** (mine entrance): hunt a boss (Slime King, Bat Matriarch, Stone Colossus) that appears at a given depth once accepted.

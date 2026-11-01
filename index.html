@@ -113,6 +113,8 @@
   .slot { min-width: 0; padding: 0; border-radius: 12px; background: #0e1438; border: 2px solid #3a4a9a;
           box-shadow: inset 0 0 0 2px #141c48; font-size: 1.8rem; position: relative; line-height: 1; }
   .slot.empty { background: #141a40; opacity: .7; }
+  .slot.raw { background: #3a1a2a; }
+  .slot i { position: absolute; left: 3px; top: 2px; font-size: .55rem; font-style: normal; font-weight: bold; color: #ffb0b8; letter-spacing: .5px; }
   .slot.sel { border-color: var(--gold); box-shadow: 0 0 0 2px var(--gold); }
   .slot b { position: absolute; right: 4px; bottom: 3px; font-size: .8rem; color: #fff; text-shadow: 0 1px 0 #000, 0 0 3px #000; }
   .me-chip { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
@@ -236,12 +238,22 @@
   :root { --joy: 164px; --knob: 72px; --act: 116px; --act-fs: 1.35rem; --pet: 88px; --chat-min: 96px; --bag: 68px;
           --top-fs: .92rem; --code-fs: 1.15rem; --hud-fs: .95rem; --hud-b: 1.1rem; --gap: 10px; }
   html[data-device="air"] { --joy: 164px; --knob: 72px; --act: 116px; --pet: 88px; --chat-min: 96px; --bag: 68px; }
-  html[data-device="15pro"] { --joy: 146px; --knob: 64px; --act: 104px; --act-fs: 1.2rem; --pet: 74px; --chat-min: 78px; --bag: 60px;
+  html[data-device="15pro"] { --joy: 146px; --knob: 64px; --act: 104px; --act-fs: 1.2rem; --pet: 74px; --chat-min: 66px; --bag: 60px;
           --top-fs: .84rem; --code-fs: 1.05rem; --hud-fs: .88rem; --hud-b: 1rem; --gap: 8px; }
   /* Short screens (Safari toolbars showing): slimmer controls and chat so the game view stays big */
   html[data-short] { --joy: 124px; --knob: 56px; --act: 92px; --act-fs: 1.05rem; --pet: 60px; --chat-min: 74px; --gap: 6px; }
   html[data-short] .chat { padding: 4px; } html[data-short] .chat-log { font-size: .85rem; min-height: 22px; }
   html[data-short] .chat-form input { padding: 5px 8px; }
+  /* iPhone 15 Pro: a slim chat bar (latest line + input) so the game view gets the room */
+  html[data-device="15pro"] .chat { padding: 4px 6px; gap: 3px; }
+  html[data-device="15pro"] .chat-log { min-height: 18px; font-size: .82rem; line-height: 1.3; }
+  html[data-device="15pro"] .chat-form input { padding: 4px 8px; }
+  html[data-device="15pro"] .chat-form button { padding: 4px 10px; font-size: .82rem; }
+  html[data-device="15pro"][data-short] { --chat-min: 58px; }
+  @media (hover: none), (max-width: 780px) {
+    html[data-device="15pro"] .playarea { grid-template-rows: auto auto var(--chat-min); align-content: space-between; }
+    html[data-device="15pro"] .chat { height: var(--chat-min); }
+  }
   #pet-canvas { width: var(--pet); height: var(--pet); }
   .pet-dock.empty { visibility: hidden; }
   @media (hover: none), (max-width: 780px) {
@@ -406,7 +418,7 @@
 // ================= Version & fresh assets =================
 // BUILD changes with every release. Asset URLs carry it, so phones can't keep showing stale images,
 // and on load we check whether the server has a newer build than the one running.
-const BUILD = "2026.11.01-2010";
+const BUILD = "2026.11.01-2030";
 const withV = url => /^(https?:|data:|blob:)/.test(url) ? url : url + (url.includes("?") ? "&" : "?") + "v=" + BUILD;
 // ---- Screen fit: detect the phone from its screen size (in points) and pick a layout profile
 const FIT_PROFILES = { auto: "Auto", air: "iPhone Air", "15pro": "iPhone 15 Pro", standard: "Standard" };
@@ -500,9 +512,36 @@ const ITEMS = {
               use: p => { p.hp = maxHp(p); if (p.level >= 10) return "ate a Miner's Lunch"; const xp = Math.ceil(xpForLevel(p.level) / 2); p.xp += xp; return `ate a Miner's Lunch (+${xp} XP)`; } },
   charm:    { icon: "🍀", name: "Lucky Charm",   stack: 3, desc: () => "+15% success on your next 3 swings",
               use: p => { if ((p.charm || 0) >= 9) return null; p.charm = (p.charm || 0) + 3; return "rubbed a Lucky Charm 🍀"; } },
+  // ---- food: hunt & forage, then cook at the campfire
+  rawChicken: { icon: "🍗", raw: true, name: "Raw Chicken", stack: 5, desc: () => "Too raw to eat — cook it at the campfire", use: () => null },
+  rawPork:    { icon: "🥓", raw: true, name: "Raw Pork",    stack: 5, desc: () => "Too raw to eat — cook it at the campfire", use: () => null },
+  rawBeef:    { icon: "🥩", raw: true, name: "Raw Beef",    stack: 5, desc: () => "Too raw to eat — cook it at the campfire", use: () => null },
+  apple:      { icon: "🍎", name: "Apple",  stack: 9, desc: p => `Crunchy! Heals ${healAmt(p, .1)}`,  use: p => eat(p, .1, "munched an Apple 🍎") },
+  orange:     { icon: "🍊", name: "Orange", stack: 9, desc: p => `Juicy! Heals ${healAmt(p, .1)}`,   use: p => eat(p, .1, "peeled an Orange 🍊") },
+  chicken:    { icon: "🍗", name: "Grilled Chicken", stack: 5, desc: p => `Heals ${healAmt(p, .3)}`, use: p => eat(p, .3, "ate Grilled Chicken 🍗") },
+  bacon:      { icon: "🥓", name: "Crispy Bacon",    stack: 5, desc: p => `Heals ${healAmt(p, .45)}`, use: p => eat(p, .45, "ate Crispy Bacon 🥓") },
+  steak:      { icon: "🥩", name: "Steak",           stack: 5, desc: p => `Heals ${healAmt(p, .6)}`, use: p => eat(p, .6, "ate a Steak 🥩") },
+  pie:        { icon: "🥧", name: "Apple Pie",       stack: 5, desc: p => `Heals ${healAmt(p, .4)}`, use: p => eat(p, .4, "ate Apple Pie 🥧") },
+  salad:      { icon: "🥗", name: "Fruit Salad",     stack: 5, desc: p => `Heals ${healAmt(p, .35)}`, use: p => eat(p, .35, "ate a Fruit Salad 🥗") },
+  stew:       { icon: "🍲", name: "Hearty Stew",     stack: 3, desc: () => "Heals you completely", use: p => eat(p, 1, "slurped a Hearty Stew 🍲") },
   dynamite: { icon: "🧨", name: "Dynamite",      stack: 3, desc: () => "Light it: your next swing can't miss",
               use: p => { if ((p.dynamite || 0) >= 3) return null; p.dynamite = (p.dynamite || 0) + 1; return "lit a stick of Dynamite 🧨"; } },
 };
+const healAmt = (p, f) => Math.max(1, Math.ceil(maxHp(p) * f));
+function eat(p, f, msg) { if (p.hp >= maxHp(p)) return null; p.hp = Math.min(maxHp(p), p.hp + healAmt(p, f)); return msg; }
+const countItem = (p, id) => (p.inv || []).reduce((n, sl) => n + (sl && sl.id === id ? sl.n : 0), 0);
+function takeItem(p, id, n) {
+  for (let i = p.inv.length - 1; i >= 0 && n > 0; i--) { const sl = p.inv[i]; if (!sl || sl.id !== id) continue; const k = Math.min(n, sl.n); sl.n -= k; n -= k; if (!sl.n) p.inv[i] = null; }
+}
+const RECIPES = [
+  { out: "chicken", needs: { rawChicken: 1 } },
+  { out: "bacon",   needs: { rawPork: 1 } },
+  { out: "steak",   needs: { rawBeef: 1 } },
+  { out: "pie",     needs: { apple: 2 } },
+  { out: "salad",   needs: { apple: 1, orange: 1 } },
+  { out: "stew",    needs: { rawPork: 1, rawChicken: 1, orange: 1 } },
+];
+const canCook = (p, r) => Object.entries(r.needs).every(([id, n]) => countItem(p, id) >= n);
 function fitBag(p) { const cap = bagCap(p); if (!Array.isArray(p.inv)) p.inv = []; while (p.inv.length < cap) p.inv.push(null); }
 function bagRoom(p, id) {   // how many of an item still fit
   fitBag(p); const st = ITEMS[id].stack;
@@ -585,6 +624,53 @@ function makeEnemy(s, level, x, y) {
 }
 const enemyAt = (s, x, y) => (s.enemies || []).find(e => e.x === x && e.y === y);
 const enemyName = e => e.name || ENEMY_TYPES[e.type].name;
+
+// ---- Forest animals: wander the woods, run when you get close; hunt them for meat
+const ANIMALS = {
+  chicken: { name: "Chicken", hp: 3,  step: 650,  meat: "rawChicken", n: [1, 1], xp: 2, scale: .72, skittish: 2.5 },
+  pig:     { name: "Pig",     hp: 6,  step: 1000, meat: "rawPork",    n: [1, 2], xp: 4, scale: 1,   skittish: 2 },
+  cow:     { name: "Cow",     hp: 10, step: 1350, meat: "rawBeef",    n: [1, 2], xp: 6, scale: 1.3, skittish: 0 },
+};
+const ANIMALS_PER_ROOM = 4;
+const animalAt = (x, y) => (state.animals || []).find(a => a.x === x && a.y === y);
+const forestRoom = (rx, ry) => isForest(rx * W + 7, ry * H + 7) || FOREST_ROOMS.some(r => r.rx === rx && r.ry === ry);
+function animalFree(a, x, y) {
+  return Math.floor(x / W) === a.rx && Math.floor(y / H) === a.ry && walkable(state, "world", x, y) && !animalAt(x, y)
+    && !state.players.some(p => p.room === "world" && p.x === x && p.y === y);
+}
+function animalTick(now) {   // host: spawn and move animals in the forest rooms people are in
+  const rooms = new Set();
+  state.players.forEach((p, i) => { if ((i === 0 || net.connected) && p.room === "world" && !p.ko) rooms.add(Math.floor(p.x / W) + "," + Math.floor(p.y / H)); });
+  for (const key of rooms) {
+    const [rx, ry] = key.split(",").map(Number);
+    if (!forestRoom(rx, ry) || now < (nextAnimal[key] || 0)) continue;
+    nextAnimal[key] = now + 4000;
+    if (state.animals.filter(a => a.rx === rx && a.ry === ry).length >= ANIMALS_PER_ROOM || Math.random() > 0.6) continue;
+    const kind = Math.random() < 0.45 ? "chicken" : Math.random() < 0.6 ? "pig" : "cow";
+    for (let tries = 0; tries < 40; tries++) {
+      const x = rx * W + 1 + Math.floor(Math.random() * (W - 2)), y = ry * H + 1 + Math.floor(Math.random() * (H - 2));
+      const a = { rx, ry };
+      if (!animalFree(a, x, y) || state.players.some(p => p.room === "world" && Math.abs(p.x - x) + Math.abs(p.y - y) < 4)) continue;
+      state.animals.push({ id: state.nextAnimalId++, kind, x, y, rx, ry, hp: ANIMALS[kind].hp, max: ANIMALS[kind].hp, dir: "left", nextStep: now + 800 });
+      if (state.animals.length > 40) state.animals.shift();
+      simDirty = true; break;
+    }
+  }
+  for (const a of state.animals) {
+    if (!rooms.has(a.rx + "," + a.ry) || now < a.nextStep) continue;
+    const A = ANIMALS[a.kind], near = state.players.filter(p => p.room === "world" && !p.ko).map(p => ({ p, d: Math.abs(p.x - a.x) + Math.abs(p.y - a.y) }))
+      .sort((u, v) => u.d - v.d)[0];
+    const flee = near && (now < (a.scared || 0) || (A.skittish && near.d <= A.skittish));
+    a.nextStep = now + A.step * (flee ? 0.55 : 1) * (0.7 + Math.random() * 0.6);
+    if (!flee && Math.random() < 0.45) continue;                     // grazing
+    const opts = Object.entries(DIRS).map(([d, [dx, dy]]) => ({ d, x: a.x + dx, y: a.y + dy })).filter(o => animalFree(a, o.x, o.y));
+    if (!opts.length) continue;
+    const o = flee ? opts.sort((u, v) => (Math.abs(v.x - near.p.x) + Math.abs(v.y - near.p.y)) - (Math.abs(u.x - near.p.x) + Math.abs(u.y - near.p.y)))[0]
+                   : opts[Math.floor(Math.random() * opts.length)];
+    a.x = o.x; a.y = o.y; if (o.d === "left" || o.d === "right") a.dir = o.d; simDirty = true;
+  }
+}
+let nextAnimal = {};
 
 // ---- Quests: team quests from the town folk (both players share progress and rewards)
 const BOSSES = [
@@ -692,6 +778,7 @@ const STATIONS = [
   { id: "forge", x: SHOP_ROOM.rx * W + 7,  y: SHOP_ROOM.ry * H + 5, name: "Forge",        verb: "smelt bars" },
   { id: "anvil", x: SHOP_ROOM.rx * W + 10, y: SHOP_ROOM.ry * H + 5, name: "Anvil",        verb: "craft gear" },
   { id: "bench", x: SHOP_ROOM.rx * W + 13, y: SHOP_ROOM.ry * H + 5, name: "Workbench",    verb: "carve handles" },
+  { id: "cook",  x: HOME_ROOM.rx * W + 3,  y: HOME_ROOM.ry * H + 9, name: "Campfire",     verb: "cook" },
   // Town folk who hand out team quests
   { id: "brea", npc: true, x: HOME_ROOM.rx * W + 11, y: HOME_ROOM.ry * H + 9, name: "Captain Brea", verb: "talk", icon: "⚔️",
     role: "Town guard", look: { skin: 3, hairStyle: 1, hairColor: 2, hatStyle: 0, hatColor: 5, shirt: 2, pants: 0, shoes: 1, pet: 0 } },
@@ -729,6 +816,10 @@ function isForest(x, y) {
   return vnoise(x / 11 + 40, y / 11 + 40) > 0.68;
 }
 const treeKey = (x, y) => x + "," + y;
+// Fruit trees: a couple at home base, more scattered through the forests. Pick fruit; it grows back.
+const HOME_FRUIT = [{ x: HOME_ROOM.rx * W + 2, y: HOME_ROOM.ry * H + 11 }, { x: HOME_ROOM.rx * W + 12, y: HOME_ROOM.ry * H + 12 }];
+const fruitKind = (x, y) => HOME_FRUIT[1].x === x && HOME_FRUIT[1].y === y ? "orange" : HOME_FRUIT[0].x === x && HOME_FRUIT[0].y === y ? "apple" : hash2(x, y, 77) < 0.55 ? "apple" : "orange";
+const FRUIT_REGROW_MS = 90000;
 const choppable = (x, y) => worldTile(x, y) === "tree" && x > 0 && y > 0 && x < WT - 1 && y < WT - 1;
 const chopChance = p => Math.min(0.95, 0.72 + 0.03 * p.pick);
 const TREE_REGROW_MS = 150000, WOOD_PER_HANDLE = 3;
@@ -747,11 +838,12 @@ function worldTile(x, y) {
     if (x === CAVE.x && y > CAVE.y && y < PATH_Y) return "path";
     if (x === HOME.x && y > HOUSE.y + 1 && y < PATH_Y) return "path";
     if (STATIONS.some(st => st.x === x && y > st.y && y < PATH_Y)) return "path";      // spurs up to cart / forge / anvil
+    if (HOME_FRUIT.some(f => f.x === x && f.y === y)) return "fruit";
     const town = [HOME_ROOM, SHOP_ROOM, CAVE_ROOM].some(r => inRoom(x, y, r));
     const r = hash2(x, y);
     if (town) return r < 0.07 ? "flower" : "grass";
     if (vnoise(x / 7, y / 7) > 0.74) return "water";
-    if (isForest(x, y)) return r < 0.36 ? "tree" : r < 0.40 ? "flower" : "grass";
+    if (isForest(x, y)) return r < 0.03 ? "fruit" : r < 0.36 ? "tree" : r < 0.40 ? "flower" : "grass";
     if (r < 0.075) return "tree";
     if (r < 0.085) return "boulder";
     if (r < 0.13) return "flower";
@@ -760,7 +852,7 @@ function worldTile(x, y) {
   worldTileCache.set(key, t);
   return t;
 }
-const SOLID_TILES = new Set(["edge", "tree", "water", "boulder", "house", "cliff", "cave"]);
+const SOLID_TILES = new Set(["edge", "tree", "fruit", "water", "boulder", "house", "cliff", "cave"]);
 
 // ---- Mine levels: each depth keeps its own rocks, enemies and (maybe) a tunnel further down
 function newMineLevel(d, players) {
@@ -789,7 +881,7 @@ function newGame() {
     players: [newPlayer("Player 1", 0), newPlayer("Player 2", 1)],
     shared: { gold: 0, bag: {}, bars: {} },
     team: { mined: 0, fails: 0, goldEarned: 0, ores: {}, kills: 0, maxDepth: 1 },
-    log: [], mines: {}, drops: [], nextDropId: 1, chat: [], nextChatId: 1, quests: {}, questsDone: {}, felled: {},
+    log: [], mines: {}, drops: [], nextDropId: 1, chat: [], nextChatId: 1, quests: {}, questsDone: {}, felled: {}, picked: {}, animals: [], nextAnimalId: 1,
   };
   s.mines[1] = newMineLevel(1, s.players);
   for (const n of NPCS) s.quests[n.id] = makeQuest(s, n.id);
@@ -819,7 +911,8 @@ function migrate(s) {   // bring older saves up to date
       delete p.gold; delete p.bag; delete p.bars;
     }
   }
-  s.quests = s.quests || {}; s.questsDone = s.questsDone || {}; s.felled = s.felled || {};
+  s.quests = s.quests || {}; s.questsDone = s.questsDone || {}; s.felled = s.felled || {}; s.picked = s.picked || {};
+  s.animals = Array.isArray(s.animals) ? s.animals : []; s.nextAnimalId = s.nextAnimalId || 1;
   for (const n of NPCS) if (!s.quests[n.id]) s.quests[n.id] = makeQuest(s, n.id);
   s.chat = Array.isArray(s.chat) ? s.chat : []; s.nextChatId = s.nextChatId || 1;
   s.drops = Array.isArray(s.drops) ? s.drops : []; s.nextDropId = s.nextDropId || 1;
@@ -935,7 +1028,7 @@ function applyAction(seat, action) {
     const it = ITEMS[sl.id];
     if (action.type === "useItem") {
       const msg = it.use(p);
-      if (!msg) return { text: `You can't use ${it.name} right now.`, ok: false, seat, private: true };
+      if (!msg) return { text: it.raw ? `${it.name} is too raw — cook it at the campfire first.` : `You can't use ${it.name} right now.`, ok: false, seat, private: true };
       if (--sl.n <= 0) p.inv[action.slot] = null;
       if (levelUp(p)) p.hp = maxHp(p);
       return { text: `${p.name} ${msg}.`, ok: true, seat, quiet: true,
@@ -957,6 +1050,31 @@ function applyAction(seat, action) {
     const it = ITEMS[d.item];
     return { text: `${p.name} picked up ${got > 1 ? got + " × " : "a "}${it.name}.`, ok: true, seat, quiet: true,
              fx: { room: p.room, x: p.x, y: p.y, color: "#ffe070", label: `+${got} ${it.icon}` }, noSwing: true, notify: true };
+  }
+
+  if (action.type === "hunt") {
+    const a = state.animals.find(x => x.id === action.animalId);
+    if (!a || p.room !== "world" || (p.busy || 0) > now || Math.abs(p.x - a.x) + Math.abs(p.y - a.y) > 1) return null;
+    p.busy = now + 420;
+    const A = ANIMALS[a.kind], dmg = daggerDamage(p) + Math.floor(Math.random() * 2);
+    a.hp -= dmg; a.scared = now + 4000; a.nextStep = now + 150;
+    if (a.hp > 0) return { quiet: true, ok: true, seat, weapon: "dagger", hitAnimal: a.id, fx: { room: "world", x: a.x, y: a.y, color: "#ffe070", label: `-${dmg}` } };
+    state.animals = state.animals.filter(x => x !== a);
+    const n = A.n[0] + Math.floor(Math.random() * (A.n[1] - A.n[0] + 1));
+    dropItem("world", a.x, a.y, A.meat, n);
+    p.xp += A.xp; if (levelUp(p)) p.hp = maxHp(p);
+    state.team.hunted = (state.team.hunted || 0) + 1;
+    return { quiet: true, ok: true, seat, weapon: "dagger", fx: { room: "world", x: a.x, y: a.y, color: "#ffffff", label: `${A.name}! +${n} ${ITEMS[A.meat].icon}` } };
+  }
+
+  if (action.type === "pick") {
+    const tx = action.tx, ty = action.ty, key = treeKey(tx, ty);
+    if (p.room !== "world" || worldTile(tx, ty) !== "fruit" || state.picked[key] || Math.abs(p.x - tx) + Math.abs(p.y - ty) !== 1) return null;
+    const kind = fruitKind(tx, ty), n = 1 + (Math.random() < 0.35 ? 1 : 0);
+    const got = addItem(p, kind, n);
+    if (!got) return { text: "Your backpack is full!", ok: false, seat, private: true };
+    state.picked[key] = now + FRUIT_REGROW_MS;
+    return { quiet: true, ok: true, seat, noSwing: true, leaves: true, fx: { room: "world", x: tx, y: ty, color: "#ff9a6a", label: `+${got} ${ITEMS[kind].icon}` } };
   }
 
   if (action.type === "chop") {
@@ -1111,6 +1229,17 @@ function applyAction(seat, action) {
     return { text, ok: true, seat, fx: fx("#ff8a1e", `+${n} ${barName(ore)}`) };
   }
 
+  if (action.type === "cook" && station.id === "cook") {
+    const r = RECIPES.find(r => r.out === action.recipe);
+    if (!r || !canCook(p, r)) return null;
+    for (const [id, n] of Object.entries(r.needs)) takeItem(p, id, n);
+    if (!addItem(p, r.out, 1)) dropItem("world", p.fx, p.fy + 0.2, r.out, 1, -1);
+    state.team.cooked = (state.team.cooked || 0) + 1;
+    const it = ITEMS[r.out];
+    return { text: `${p.name} cooked ${it.name} ${it.icon}`, ok: true, seat, quiet: true, notify: true, noSwing: true,
+             fx: fx("#ffb050", `+1 ${it.icon}`) };
+  }
+
   if (action.type === "carve" && station.id === "bench") {
     const n = Math.min(Math.max(1, Math.floor(action.count) || 1), Math.floor((sh.bag.Wood || 0) / WOOD_PER_HANDLE));
     if (n < 1) return null;
@@ -1147,11 +1276,10 @@ function hostTick() {
       Object.assign(p, { room: "world", x: at.x, y: at.y, fx: at.x, fy: at.y, dir: "down" }); p.tp++;
       addLog(`${p.name} came to at home base.`, true); simDirty = true;
     }
-    if (!p.ko && p.room === "world" && inRoom(p.x, p.y, HOME_ROOM) && p.hp < maxHp(p) && now >= (p.regen || 0)) {   // rest up at home
-      p.hp = Math.min(maxHp(p), p.hp + 1); p.regen = now + 1200; simDirty = true;
-    }
   });
   for (const [k, t] of Object.entries(state.felled)) if (now >= t) { delete state.felled[k]; simDirty = true; }   // trees grow back
+  for (const [k, t] of Object.entries(state.picked)) if (now >= t) { delete state.picked[k]; simDirty = true; }   // fruit ripens again
+  animalTick(now);
   // simulate every mine level that has someone in it
   for (const L of Object.values(state.mines)) {
     const key = "mine:" + L.depth;
@@ -2147,6 +2275,15 @@ function worldRoomBg(rx, ry) {
       if (t === "tree" && state && state.felled && state.felled[treeKey(gx, gy)]) {        // chopped down: a stump while it regrows
         px(X + 9 * h, Y + 16 * h, 14, 10, "#7a4e2a"); px(X + 9 * h, Y + 14 * h, 14, 4, "#d8b07a"); px(X + 13 * h, Y + 15 * h, 6, 2, "#b08a54");
         px(X + 6 * h, Y + 24 * h, 4, 2, "#5a3a22"); px(X + 22 * h, Y + 24 * h, 4, 2, "#5a3a22");
+      } else if (t === "fruit") {
+        const ripe = !(state && state.picked && state.picked[treeKey(gx, gy)]), col = fruitKind(gx, gy) === "apple" ? "#e8302a" : "#ff9a1e";
+        over.push(() => {
+          g.drawImage(TREE_ART, X - TS * .15, Y - TS * .45, TS * 1.3, TS * 1.3);
+          if (ripe) for (const [fx, fy] of [[8, -6], [18, -10], [24, -2], [12, 2], [20, 4]]) {
+            g.fillStyle = col; g.beginPath(); g.arc(X + fx * h, Y + fy * h, 2.2 * h, 0, Math.PI * 2); g.fill();
+            g.fillStyle = "rgba(255,255,255,.6)"; g.fillRect(X + (fx - 1) * h, Y + (fy - 1.2) * h, h, h);
+          }
+        });
       } else if (t === "tree") { const art = isForest(gx, gy) ? PINE_ART : TREE_ART; over.push(() => g.drawImage(art, X - TS * .15, Y - TS * .45, TS * 1.3, TS * 1.3)); }
       if (t === "boulder") over.push(() => g.drawImage(rockSprite(1, 0), X, Y, TS, TS));
     }
@@ -2225,6 +2362,15 @@ function cartGrid() {
   for (const cx of [9, 22]) { ell(g, cx, 26, 4, 4, "D"); ell(g, cx, 26, 1.6, 1.6, "d"); }  // wheels
   return g.map(r => r.join(""));
 }
+function campfireGrid() {
+  const g = newGrid();
+  for (const [x, y] of [[6, 26], [10, 28], [16, 29], [22, 28], [26, 26], [8, 23], [24, 23]]) ell(g, x, y, 2.4, 1.8, "S");   // stone ring
+  rect(g, 9, 22, 23, 24, "W"); rect(g, 11, 20, 21, 21, "w"); rect(g, 9, 22, 23, 22, "Y");                                     // logs
+  ell(g, 16, 15, 5, 6.5, "F"); ell(g, 16, 16, 3, 4, "O"); ell(g, 16, 17, 1.4, 2, "y");                                       // fire
+  put(g, 12, 11, "F"); put(g, 20, 10, "F"); put(g, 16, 7, "O");
+  rect(g, 24, 8, 25, 21, "k"); rect(g, 6, 8, 7, 21, "k"); rect(g, 6, 8, 25, 8, "k"); rect(g, 14, 9, 18, 12, "P");          // spit + pot
+  return g.map(r => r.join(""));
+}
 function benchGrid() {
   const g = newGrid();
   rect(g, 4, 15, 27, 18, "W"); rect(g, 4, 15, 27, 15, "Y"); rect(g, 4, 18, 27, 18, "w");      // table top
@@ -2235,6 +2381,8 @@ function benchGrid() {
   return g.map(r => r.join(""));
 }
 const STATION_ART = {
+  cook: paint(campfireGrid(), { K: "#22182a", S: "#8a8496", W: "#8a5a32", w: "#6a4024", Y: "#c88a4a", F: "#e0502a", O: "#ff9a2a", y: "#fff0a0",
+                                k: "#4a3a3a", P: "#3a3440" }, { passes: 0 }),
   bench: paint(benchGrid(), { K: "#22182a", W: "#c88a4a", w: "#8a5a32", Y: "#e8b468", k: "#5a3a22", P: "#e0b070", p: "#f4d4a0",
                               S: "#c8d4e8", R: "#b84a3a" }, { passes: 0 }),
   anvil: paint(anvilGrid(), { K: "#22182a", M: "#7e8aa0", m: "#5a627a", H: "#c8d4e8", W: "#b07a44", w: "#8a5a32" }, { passes: 0 }),
@@ -2269,6 +2417,7 @@ function onResult(r) {
     if (pl.room === myRoom()) floaters.push({ x: (pl.x + .5) * TS, y: pl.y * TS - 20, t0: tnow, text: `-${h.dmg}`, color: "#ff6a6a" });
   }
   if (r.hitEnemy) enemyFlash[r.hitEnemy] = tnow;
+  if (r.hitAnimal) enemyFlash["a" + r.hitAnimal] = tnow;
   if (r.weapon) swingWeapon[r.seat] = r.weapon; else if (r.fx && isMine(r.fx.room)) swingWeapon[r.seat] = "pick";
   if (r.private) { if (r.seat === net.seat) showResult(r, 2500); return; }
   if (r.notify) showResult({ ...r, neutral: true }, 3000);
@@ -2315,6 +2464,8 @@ function facing() {
     const r = rockAt(L, x, y); return r ? { kind: "rock", rock: r } : null;
   }
   const st = stationAt(x, y); if (st) return { kind: "station", station: st };
+  const an = animalAt(x, y) || animalAt(me.x, me.y); if (an) return { kind: "animal", animal: an };
+  if (worldTile(x, y) === "fruit") return (state.picked || {})[treeKey(x, y)] ? null : { kind: "fruit", x, y };
   return choppable(x, y) && !(state.felled || {})[treeKey(x, y)] ? { kind: "tree", x, y } : null;
 }
 
@@ -2416,7 +2567,7 @@ function drawStation(st, now) {
   const art = (CUSTOM.stations && CUSTOM.stations[st.id]) || STATION_ART[st.id];
   if (art.sheet) drawSprite(art, X + TS / 2 - art.width / K / 2, Y + TS - art.height / K);
   else { const w = TS * 1.6; drawSprite(art, X + (TS - w) / 2, Y + TS - w, w, w); }
-  if (st.id === "forge") {                                   // flickering fire glow
+  if (st.id === "forge" || st.id === "cook") {                // flickering fire glow
     const f = Math.random();
     ctx.fillStyle = `rgba(255,${120 + f * 60 | 0},30,${0.18 + f * 0.12})`;
     ctx.beginPath(); ctx.arc(X + TS / 2, Y + TS * 0.55, TS * (0.8 + f * 0.1), 0, Math.PI * 2); ctx.fill();
@@ -2527,6 +2678,7 @@ function drawDrop(d, now) {
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
   ctx.fillText(it.icon, cx, base - 14 + bob);
   if (d.n > 1) drawLabel("×" + d.n, cx + TS * .3, base - 2 + bob, "#ffffff", 9);
+  if (it.raw) drawLabel("raw", cx - TS * .28, base - 2 + bob, "#ffb0b8", 8);
 }
 // Walk over an item to pick it up (the host checks it's really there and you have room).
 const pickupTried = {}, walkedOff = {};
@@ -2548,6 +2700,50 @@ function checkPickups(now) {
     }
     sendAction({ type: "pickup", dropId: d.id });
   }
+}
+
+function animalGrid(kind, f) {
+  const g = newGrid(32);
+  if (kind === "chicken") {
+    ell(g, 15, 19, 8, 6.5, "W"); ell(g, 22, 13, 4, 4, "W"); rect(g, 7, 15, 9, 18, "w");          // body, head, tail
+    rect(g, 22, 7, 24, 9, "R"); rect(g, 26, 13, 28, 14, "Y"); put(g, 23, 12, "E"); rect(g, 22, 16, 23, 18, "R");
+    ell(g, 13, 19, 4, 3, "w");                                                                         // wing
+    rect(g, 13 - f, 25, 13 - f, 29, "Y"); rect(g, 18 + f, 25, 18 + f, 29, "Y"); rect(g, 12 - f, 29, 14 - f, 29, "Y"); rect(g, 17 + f, 29, 19 + f, 29, "Y");
+  } else if (kind === "pig") {
+    ell(g, 15, 18, 11, 7.5, "P"); ell(g, 25, 16, 5, 5, "P"); rect(g, 28, 15, 31, 18, "p"); put(g, 30, 16, "E"); put(g, 30, 17, "E");
+    rect(g, 23, 10, 25, 12, "p"); put(g, 26, 14, "E"); rect(g, 4, 14, 5, 15, "p"); put(g, 3, 13, "p");
+    for (const [x, d] of [[8, f], [12, -f], [19, f], [23, -f]]) rect(g, x + d, 24, x + 2 + d, 29, "p");
+    ell(g, 14, 15, 6, 2.5, "h");
+  } else {   // cow
+    ell(g, 14, 17, 12, 7.5, "W"); ell(g, 26, 13, 5, 5, "W"); rect(g, 27, 15, 31, 18, "N"); put(g, 29, 16, "E");
+    ell(g, 10, 15, 4, 3, "B"); ell(g, 18, 19, 3.5, 3, "B"); ell(g, 6, 20, 2.5, 2.5, "B"); put(g, 26, 12, "E");
+    rect(g, 23, 7, 24, 9, "H"); rect(g, 28, 7, 29, 9, "H"); rect(g, 1, 13, 2, 21, "w");
+    for (const [x, d] of [[5, f], [9, -f], [18, f], [22, -f]]) { rect(g, x + d, 24, x + 2 + d, 29, "W"); rect(g, x + d, 29, x + 2 + d, 30, "B"); }
+    rect(g, 13, 23, 16, 25, "N");
+  }
+  return g.map(r => r.join(""));
+}
+const ANIMAL_PALS = {
+  chicken: { K: "#2a1c20", W: "#fbf6ee", w: "#d8ccc0", R: "#e8483e", Y: "#f2b030", E: "#1a1020" },
+  pig:     { K: "#3a1a24", P: "#f4a8b8", p: "#d87890", h: "#ffd0dc", E: "#3a1a24" },
+  cow:     { K: "#22182a", W: "#f4efe6", w: "#c8c0b4", B: "#2a2430", N: "#f0a8a8", H: "#e8dcc0", E: "#1a1020" },
+};
+const animalArt = {};
+const animalSprite = (k, f) => animalArt[k + f] || (animalArt[k + f] = paint(animalGrid(k, f), ANIMAL_PALS[k], { passes: 0 }));
+const animalDisp = {};
+function drawAnimal(a, now) {
+  const d = animalDisp[a.id] || (animalDisp[a.id] = { x: a.x, y: a.y }), A = ANIMALS[a.kind];
+  const moving = Math.abs(a.x - d.x) + Math.abs(a.y - d.y) > 0.05;
+  const img = animalSprite(a.kind, moving ? Math.floor(now / 140) % 2 : 0);
+  const w = TS * A.scale, cx = d.x * TS + TS / 2, feet = d.y * TS + TS - 2;
+  const hop = a.kind === "chicken" && moving ? Math.abs(Math.sin(now / 90)) * 3 : 0;
+  ctx.fillStyle = "#00000044"; ctx.beginPath(); ctx.ellipse(cx, feet - 2, 12 * A.scale, 4, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.save();
+  if (a.dir === "left") { ctx.translate(cx, 0); ctx.scale(-1, 1); ctx.translate(-cx, 0); }   // art faces right
+  drawSprite(img, cx - w / 2, feet - w - hop, w, w);
+  ctx.restore();
+  if (now - (enemyFlash["a" + a.id] || -1e9) < 140) { ctx.globalAlpha = .6; ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.ellipse(cx, feet - w / 2, w * .35, w * .3, 0, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1; }
+  if (a.hp < a.max) hpBar(cx, feet - w - 6, a.hp, a.max, "#ffb0b8");
 }
 
 function drawEnemy(e, now) {
@@ -2638,6 +2834,14 @@ function drawTooltip() {
       lock ? null : [`${act} to mine`, "#ffe070"],
     ];
     tx = rock.x; ty = rock.y; border = info.color;
+  } else if (f.kind === "animal") {
+    const a = f.animal, A = ANIMALS[a.kind];
+    lines = [[A.name, "#ffffff"], [`HP ${a.hp}/${a.max} · drops ${ITEMS[A.meat].name}`, "#ffb0b8"], [`${act} to hunt (🗡️ ${daggerDamage(me)} dmg)`, "#ffe070"]];
+    tx = a.x; ty = a.y; border = "#ffb0b8";
+  } else if (f.kind === "fruit") {
+    const k = fruitKind(f.x, f.y);
+    lines = [[`${k === "apple" ? "Apple" : "Orange"} tree`, "#ffffff"], [`Ripe ${ITEMS[k].icon} — eat raw or cook`, "#9af08a"], [`${act} to pick`, "#ffe070"]];
+    tx = f.x; ty = f.y; border = "#ff9a6a";
   } else if (f.kind === "tree") {
     lines = [[isForest(f.x, f.y) ? "Pine tree" : "Oak tree", "#ffffff"],
              [`${Math.round(chopChance(me) * 100)}% per chop · +1 🪵 Wood`, "#9af08a"], [`${act} to chop`, "#ffe070"]];
@@ -2654,6 +2858,7 @@ function drawTooltip() {
     if (st.id === "forge") info = "2 ore + 1 Coal → 1 bar";
     if (st.id === "cart") info = "Potions, charms, dynamite & more";
     if (st.id === "bench") info = `${WOOD_PER_HANDLE} Wood → 1 pickaxe handle`;
+    if (st.id === "cook") info = "Cook meat & fruit into hearty food";
     if (st.npc) { const q = state.quests[st.id]; info = !q ? st.role : !q.accepted ? "Has a quest for you!" : questReady(q) ? "Quest complete — hand it in!" : `${q.title} (${questProgress(q)}/${q.need})`; }
     lines = [[st.name, "#ffffff"], [info, "#c8d4ff"], [`${act} to ${st.verb}`, "#ffe070"]];
     tx = st.x; ty = st.y; border = "#f2c14e";
@@ -2708,7 +2913,7 @@ function frame(now) {
       if (L.tunnel) drawTunnel(L.tunnel, now);
     }
 
-    const fsig = Object.keys(state.felled || {}).join("|");      // a tree fell or grew back: redraw the room backgrounds
+    const fsig = Object.keys(state.felled || {}).join("|") + "#" + Object.keys(state.picked || {}).join("|");      // a tree fell or grew back: redraw the room backgrounds
     if (fsig !== felledSig) { felledSig = fsig; worldBgCache.clear(); }
     const things = [];
     if (isMine(room)) {
@@ -2735,6 +2940,13 @@ function frame(now) {
         .forEach(st => things.push({ y: st.y, draw: () => drawStation(st, now) }));
     }
     const viewRoom = { rx: org.x / W, ry: org.y / H };
+    if (room === "world") for (const a of state.animals || []) {
+      if (a.rx !== viewRoom.rx || a.ry !== viewRoom.ry) continue;
+      const d = animalDisp[a.id] || (animalDisp[a.id] = { x: a.x, y: a.y }), sp = (1000 / ANIMALS[a.kind].step) * 1.8 * dt;
+      d.x += Math.sign(a.x - d.x) * Math.min(Math.abs(a.x - d.x), sp); d.y += Math.sign(a.y - d.y) * Math.min(Math.abs(a.y - d.y), sp);
+      if (Math.abs(a.x - d.x) + Math.abs(a.y - d.y) > 3) { d.x = a.x; d.y = a.y; }
+      things.push({ y: d.y + 0.004, draw: () => drawAnimal(a, now) });
+    }
     for (const d of state.drops || [])
       if (d.room === room && (isMine(room) || inRoom(Math.round(d.x), Math.round(d.y), viewRoom))) things.push({ y: d.y - 0.3, draw: () => drawDrop(d, now) });
     updatePets(dt);
@@ -2852,12 +3064,14 @@ function act(target) {
   const me = state.players[net.seat];
   const f = target || facing();
   if (me.ko) return;
-  if (!f) return floatText(isMine(me.room) ? "Face a rock or enemy" : "Face a tree to chop it, or a station to use it", "#a8977c");
+  if (!f) return floatText(isMine(me.room) ? "Face a rock or enemy" : "Face a tree, animal or station to use it", "#a8977c");
   if (f.kind === "station") return openMenu(f.station.id);
   if (!net.connected) return floatText("Waiting for your friend", "#a8977c");
   const tnow = performance.now();
   if (tnow < actReady) { actQueued = true; return; }   // pressed mid-swing: fire as soon as it's ready
   actReady = tnow + 430;
+  if (f.kind === "animal") return sendAction({ type: "hunt", animalId: f.animal.id, x: me.x, y: me.y, fx: me.fx, fy: me.fy, dir: me.dir, room: me.room });
+  if (f.kind === "fruit") return sendAction({ type: "pick", tx: f.x, ty: f.y, x: me.x, y: me.y, fx: me.fx, fy: me.fy, dir: me.dir, room: me.room });
   if (f.kind === "tree") return sendAction({ type: "chop", tx: f.x, ty: f.y, x: me.x, y: me.y, fx: me.fx, fy: me.fy, dir: me.dir, room: me.room });
   if (f.kind === "enemy") return sendAction({ type: "attack", enemyId: f.enemy.id, x: me.x, y: me.y, fx: me.fx, fy: me.fy, dir: me.dir, room: me.room });
   const lock = lockReason(me, f.rock.level);
@@ -2922,12 +3136,12 @@ function renderBag(el) {
   note.textContent = "Tap an item to use or drop it. Anything you drop can be picked up by walking over it.";
   if (bagSel >= 0 && !me.inv[bagSel]) bagSel = -1;
   let html = `<div class="bag-grid" style="grid-template-columns:repeat(${cols},54px)">` + me.inv.map((sl, i) =>
-    `<button class="slot${i === bagSel ? " sel" : ""}${sl ? "" : " empty"}" data-slot="${i}">${sl ? ITEMS[sl.id].icon + (sl.n > 1 ? `<b>${sl.n}</b>` : "") : ""}</button>`).join("") + `</div>`;
+    `<button class="slot${i === bagSel ? " sel" : ""}${sl ? "" : " empty"}${sl && ITEMS[sl.id].raw ? " raw" : ""}" data-slot="${i}">${sl ? ITEMS[sl.id].icon + (sl.n > 1 ? `<b>${sl.n}</b>` : "") + (ITEMS[sl.id].raw ? "<i>RAW</i>" : "") : ""}</button>`).join("") + `</div>`;
   const sl = me.inv[bagSel];
   if (sl) {
     const it = ITEMS[sl.id], dis = net.connected ? "" : "disabled";
     html += `<div class="mrow"><div class="ic">${it.icon}</div><div class="txt"><b>${it.name} ×${sl.n}</b><small>${it.desc(me)}</small></div>
-      <div class="btns"><button class="btn-gold" data-use="${bagSel}" ${dis}>Use</button><button data-drop="${bagSel}" data-n="1" ${dis}>Drop 1</button>${sl.n > 1 ? `<button data-drop="${bagSel}" data-n="${sl.n}" ${dis}>Drop all</button>` : ""}</div></div>`;
+      <div class="btns">${it.raw ? "" : `<button class="btn-gold" data-use="${bagSel}" ${dis}>${it.use === undefined ? "Use" : ["apple","orange","chicken","bacon","steak","pie","salad","stew"].includes(sl.id) ? "Eat" : "Use"}</button>`}<button data-drop="${bagSel}" data-n="1" ${dis}>Drop 1</button>${sl.n > 1 ? `<button data-drop="${bagSel}" data-n="${sl.n}" ${dis}>Drop all</button>` : ""}</div></div>`;
   } else html += `<div class="mrow dim"><div class="ic">👆</div><div class="txt"><b>${me.inv.some(Boolean) ? "Pick an item" : "Your backpack is empty"}</b><small>${me.inv.some(Boolean) ? "Tap a slot to see what it does." : "Buy supplies at the Upgrade Cart, or grab what enemies and teammates drop."}</small></div></div>`;
   const fx = [me.charm ? `🍀 Lucky for ${me.charm} swing${me.charm > 1 ? "s" : ""}` : "", me.dynamite ? `🧨 ${me.dynamite} dynamite lit` : ""].filter(Boolean).join(" · ");
   html += `<div class="menu-inv"><b>Gear</b> ⛏️ ${PICKAXES[me.pick].name} Pickaxe · 🗡️ ${DAGGER_NAMES[me.dagger || 0]} Dagger${fx ? `<br><b>Active</b> ${fx}` : ""}</div>` + invLine(me);
@@ -2956,7 +3170,7 @@ function renderMenu() {
   el.classList.remove("hidden");
   const myTurn = net.connected;
   const st = STATIONS.find(s => s.id === menuOpen), sh = stash();
-  document.getElementById("menu-title").textContent = st.npc ? `💬 ${st.name}` : { cart: "🛒 Upgrade Cart", forge: "🔥 Forge", anvil: "⚒️ Anvil", bench: "🪚 Workbench" }[st.id];
+  document.getElementById("menu-title").textContent = st.npc ? `💬 ${st.name}` : { cart: "🛒 Upgrade Cart", forge: "🔥 Forge", anvil: "⚒️ Anvil", bench: "🪚 Workbench", cook: "🔥 Campfire" }[st.id];
   if (st.npc) return renderNpcMenu(st, me);
   const note = document.getElementById("menu-note");
   note.className = "menu-note" + (myTurn ? " turn" : "");
@@ -2986,6 +3200,17 @@ function renderMenu() {
         <div class="btns"><button data-smelt="${ore}" data-n="1" ${dis(n >= 1)}>Smelt 1</button>
           <button class="btn-gold" data-smelt="${ore}" data-n="${n}" ${dis(n >= 2)}>All (${n})</button></div></div>`;
     }).join("");
+  }
+
+  if (st.id === "cook") {
+    note.textContent = "Cook with what's in your backpack. Health no longer refills by itself — eat to heal!";
+    html = RECIPES.map(r => {
+      const it = ITEMS[r.out], ok = canCook(me, r);
+      const needs = Object.entries(r.needs).map(([id, n]) => `${n > 1 ? n + "× " : ""}${ITEMS[id].icon} ${ITEMS[id].name} <span class="${countItem(me, id) >= n ? "have" : "lack"}">(${countItem(me, id)})</span>`).join(" + ");
+      return `<div class="mrow ${ok ? "" : "dim"}"><div class="ic">${it.icon}</div><div class="txt"><b>${it.name} <small>· ${it.desc(me)}</small></b><small>${needs}</small></div>
+        <div class="btns"><button class="btn-gold" data-cook="${r.out}" ${dis(ok)}>Cook</button></div></div>`;
+    }).join("") + `<div class="mrow dim"><div class="ic">🐷</div><div class="txt"><b>Need ingredients?</b><small>Hunt chickens, pigs and cows in the forest north of town, and pick fruit from apple & orange trees.</small></div></div>`;
+    return setMenuBody(html);
   }
 
   if (st.id === "bench") {
@@ -3023,6 +3248,7 @@ document.getElementById("menu").addEventListener("click", e => {
   if (b.dataset.drop !== undefined) return sendAction({ type: "drop", slot: +b.dataset.drop, n: +b.dataset.n });
   if (b.dataset.quest) return stationAction({ type: "quest", op: b.dataset.quest });
   if (b.dataset.carve) return stationAction({ type: "carve", count: +b.dataset.carve });
+  if (b.dataset.cook) return stationAction({ type: "cook", recipe: b.dataset.cook });
   if (b.dataset.buy) stationAction({ type: "buy", item: b.dataset.buy });
   else if (b.dataset.smelt) stationAction({ type: "smelt", ore: b.dataset.smelt, count: +b.dataset.n });
   else if (b.dataset.craft !== undefined) stationAction({ type: "craft", item: b.dataset.craft || "pickaxe" });
@@ -3031,7 +3257,7 @@ document.getElementById("menu").addEventListener("click", e => {
 let actLabel = "";
 function updateActButton() {
   const f = state && facing();
-  const label = myRoom() === "world" ? (f && f.kind === "tree" ? "🪓<br>Chop" : "✋<br>Use") : f && f.kind === "enemy" ? "🗡️<br>Attack" : "⛏️<br>Mine";
+  const label = myRoom() === "world" ? (f && f.kind === "tree" ? "🪓<br>Chop" : f && f.kind === "animal" ? "🗡️<br>Hunt" : f && f.kind === "fruit" ? "🧺<br>Pick" : "✋<br>Use") : f && f.kind === "enemy" ? "🗡️<br>Attack" : "⛏️<br>Mine";
   if (label !== actLabel) { document.getElementById("act-btn").innerHTML = label; actLabel = label; }
 }
 
