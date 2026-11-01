@@ -1943,7 +1943,7 @@ function updatePets(dt) {
     const p = state.players[i], d = disp[i], kind = LOOKS.pet[cleanLook(p.look, i).pet || 0];
     if (!PET_ART[kind] || p.ko) { petPos[i] = null; continue; }
     const [bx, by] = DIRS[p.dir || "down"];
-    const tx = d.x - bx * 0.85 + (i ? -0.3 : 0.3) * Math.abs(by), ty = d.y - by * 0.6 + 0.15;
+    const tx = d.x - bx * 0.7 + (i ? -0.3 : 0.3) * Math.abs(by), ty = d.y - by * 0.5 + 0.2;
     let q = petPos[i];
     if (!q || q.room !== p.room || Math.hypot(q.x - tx, q.y - ty) > 4) q = petPos[i] = { x: tx, y: ty, room: p.room, flip: false, moving: 0 };
     const dx = tx - q.x, dy = ty - q.y, dist = Math.hypot(dx, dy);
@@ -1959,11 +1959,14 @@ function drawPet(i, now) {
   const q = petPos[i], frames = PET_ART[LOOKS.pet[cleanLook(state.players[i].look, i).pet || 0]];
   if (!q || !frames) return;
   const img = frames[q.moving > 0 ? Math.floor(now / 140) % frames.length : Math.floor(now / 600) % 2];
-  const w = img.width / K, h = img.height / K, cx = (q.x + .5) * TS, feet = (q.y + 1) * TS - 4;
+  const PET_SCALE = 0.5;                       // pets are drawn at half their art size
+  const w = img.width / K * PET_SCALE, h = img.height / K * PET_SCALE, cx = (q.x + .5) * TS, feet = (q.y + 1) * TS - 4;
   ctx.fillStyle = "#00000044"; ctx.beginPath(); ctx.ellipse(cx, feet, w * .32, 4, 0, 0, Math.PI * 2); ctx.fill();
   ctx.save();
   if (q.flip) { ctx.translate(cx, 0); ctx.scale(-1, 1); ctx.translate(-cx, 0); }
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";   // smooth downscale keeps the detail
   drawSprite(img, cx - w / 2, feet - h + 2, w, h);
+  ctx.imageSmoothingEnabled = false;
   ctx.restore();
 }
 
