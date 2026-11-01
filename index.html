@@ -97,6 +97,26 @@
   .toast.good { color: var(--good); border-color: #3d6b37; } .toast.bad { color: var(--bad); border-color: #7a3a33; }
   .toast.fade { opacity: 0; }
 
+  .menu { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(520px, 94%); max-height: 92%;
+          overflow-y: auto; background: #1d1813; border: 3px solid #6b4a2e; border-radius: 12px; padding: 10px 12px; z-index: 5;
+          box-shadow: 0 10px 30px #000a; }
+  .menu-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .menu-head h3 { margin: 0; color: var(--gold); font-size: 1.15rem; }
+  .menu-head button { font-size: .8rem; padding: 4px 9px; }
+  .menu-note { font-size: .8rem; color: var(--muted); margin: 4px 0 8px; }
+  .menu-note.turn { color: var(--gold); }
+  .mrow { display: flex; align-items: center; gap: 10px; background: var(--panel2); border-radius: 9px; padding: 7px 9px; margin-bottom: 6px; }
+  .mrow.dim { opacity: .55; }
+  .mrow .ic { font-size: 1.5rem; width: 34px; text-align: center; flex: none; }
+  .mrow .bar-ic { width: 26px; height: 14px; border-radius: 3px; border: 2px solid #120f0c; margin: 0 4px; flex: none;
+                  box-shadow: inset 3px 3px 0 #ffffff55, inset -3px -3px 0 #00000055; }
+  .mrow .txt { flex: 1; min-width: 0; font-size: .85rem; }
+  .mrow .txt b { display: block; font-size: .95rem; }
+  .mrow .txt small { color: var(--muted); }
+  .mrow .btns { display: flex; gap: 5px; flex: none; }
+  .mrow button { font-size: .8rem; padding: 6px 9px; }
+  .have { color: var(--good); } .lack { color: var(--bad); }
+  .menu-inv { font-size: .78rem; color: var(--muted); margin-top: 6px; line-height: 1.6; }
   .side { grid-area: side; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
   .side-head { display: none; justify-content: space-between; align-items: center; }
   .side h3 { margin: 0 0 6px; font-size: 1rem; }
@@ -169,7 +189,7 @@
 <body>
 <header>
   <h1>⛏️ Mine with friends</h1>
-  <p>Walk the mine, pick your rock, visit the shop. Walking is free; mining or buying uses your turn.</p>
+  <p>Mine ore, smelt bars, craft better pickaxes. Walking is free; mining, smelting, crafting or buying uses your turn.</p>
 </header>
 
 <main class="screens" id="screens">
@@ -232,6 +252,11 @@
     <div class="stage" id="stage">
       <canvas id="mine"></canvas>
       <div class="toast fade" id="result"></div>
+      <div class="menu hidden" id="menu" role="dialog" aria-modal="true">
+        <div class="menu-head"><h3 id="menu-title"></h3><button id="menu-close">✕</button></div>
+        <div class="menu-note" id="menu-note"></div>
+        <div id="menu-body"></div>
+      </div>
     </div>
     <div class="dpad touch">
       <span></span><button data-dir="up" aria-label="Up">▲</button><span></span>
@@ -253,8 +278,8 @@
         <div class="log" id="log"></div>
       </div>
       <div class="card keys-wrap">
-        <div class="keys"><kbd>WASD</kbd>/<kbd>Arrows</kbd> walk · <kbd>Space</kbd> mine or buy what you face · click a rock or item next to you ·
-          walk through the <b>SHOP</b> door to change rooms · Turn <b id="turn-num">1</b></div>
+        <div class="keys"><kbd>WASD</kbd>/<kbd>Arrows</kbd> walk · <kbd>Space</kbd> mine a rock / use the cart, forge or anvil you face · <kbd>Esc</kbd> close a menu ·
+          walk through the <b>UPGRADES</b> door to change rooms · Turn <b id="turn-num">1</b></div>
       </div>
       <div class="side-foot">
         <button id="export">Export save</button>
@@ -293,37 +318,41 @@ const PICKAXES = [
   { name: "Mythril", power: 10, cost: 3800, color: "#b98bff" },
 ];
 
-// Shop items. price/available/apply take the buying player.
-const SHOP_ITEMS = {
-  pickaxe: {
-    name: p => p.pick < 9 ? `${PICKAXES[p.pick + 1].name} Pickaxe` : "Pickaxe (maxed)",
-    desc: p => p.pick < 9 ? `Power ${PICKAXES[p.pick + 1].power} — reach tougher rocks, better odds` : "You own the best pickaxe!",
-    price: p => p.pick < 9 ? PICKAXES[p.pick + 1].cost : 0,
-    available: p => p.pick < 9,
-    apply: p => { p.pick++; return `bought a ${PICKAXES[p.pick].name} pickaxe`; },
-  },
-  charm: {
-    name: () => "Lucky Charm",
-    desc: () => "+15% success on your next 3 swings",
-    price: p => 25 + 12 * p.level,
-    available: p => (p.charm || 0) < 6,
-    apply: p => { p.charm = (p.charm || 0) + 3; return "bought a Lucky Charm 🍀"; },
-  },
-  dynamite: {
-    name: () => "Dynamite",
-    desc: () => "Your next swing can't miss",
-    price: p => 40 + 22 * p.level,
-    available: p => (p.dynamite || 0) < 3,
-    apply: p => { p.dynamite = (p.dynamite || 0) + 1; return "bought Dynamite 🧨"; },
-  },
-  lunch: {
-    name: () => "Miner's Lunch",
-    desc: p => p.level < 10 ? "Gain half a level of XP right away" : "You're max level already",
-    price: p => 20 + 10 * p.level,
-    available: p => p.level < 10,
-    apply: p => { const xp = Math.ceil(xpForLevel(p.level) / 2); p.xp += xp; return `ate a Miner's Lunch (+${xp} XP)`; },
-  },
+// ---- Upgrade cart: consumable upgrades bought with gold
+const CART_ITEMS = {
+  charm:    { icon: "🍀", name: "Lucky Charm",   desc: () => "+15% success on your next 3 swings",
+              price: p => 25 + 12 * p.level, available: p => (p.charm || 0) < 6,
+              apply: p => { p.charm = (p.charm || 0) + 3; return "bought a Lucky Charm 🍀"; } },
+  dynamite: { icon: "🧨", name: "Dynamite",      desc: () => "Your next swing can't miss",
+              price: p => 40 + 22 * p.level, available: p => (p.dynamite || 0) < 3,
+              apply: p => { p.dynamite = (p.dynamite || 0) + 1; return "bought Dynamite 🧨"; } },
+  lunch:    { icon: "🥪", name: "Miner's Lunch", desc: p => p.level < 10 ? "Gain half a level of XP right away" : "You're max level already",
+              price: p => 20 + 10 * p.level, available: p => p.level < 10,
+              apply: p => { const xp = Math.ceil(xpForLevel(p.level) / 2); p.xp += xp; return `ate a Miner's Lunch (+${xp} XP)`; } },
+  coal:     { icon: "🪨", name: "Sack of Coal",  desc: () => "3 Coal — fuel for the forge",
+              price: p => 15 + 2 * p.level, available: () => true,
+              apply: p => { p.bag.Coal = (p.bag.Coal || 0) + 3; return "bought a Sack of Coal"; } },
 };
+
+// ---- Forge: 2 ore (+1 Coal for fuel, except Stone) → 1 bar
+const SMELTABLE = ROCKS.filter(r => r.name !== "Coal").map(r => r.name);
+const barName = ore => ore === "Stone" ? "Stone Brick" : `${ore} Bar`;
+const ORE_PER_BAR = 2;
+const coalPerBar = ore => ore === "Stone" ? 0 : 1;
+function maxSmelt(p, ore) {
+  const byOre = Math.floor((p.bag[ore] || 0) / ORE_PER_BAR);
+  const c = coalPerBar(ore);
+  return c ? Math.min(byOre, Math.floor((p.bag.Coal || 0) / c)) : byOre;
+}
+
+// ---- Anvil: the next pickaxe is forged from bars of its own material
+const barsForTier = tier => tier <= 3 ? 3 : tier <= 6 ? 4 : 5;
+function craftCost(p) {
+  const tier = p.pick + 1;
+  if (tier > 9) return null;
+  const ore = PICKAXES[tier].name;
+  return { tier, ore, bar: barName(ore), need: barsForTier(tier), have: p.bars[ore] || 0 };
+}
 
 const MILESTONES = [
   { label: "Mine 25 rocks together",     test: t => t.mined >= 25 },
@@ -338,14 +367,17 @@ const MILESTONES = [
 const T = 16, S = 3, TS = T * S, W = 20, H = 12, ROCK_COUNT = 12;
 const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 const ROOMS = {
-  mine: { inside: (x, y) => x >= 1 && x <= W - 2 && y >= 2 && y <= H - 2, door: { x: 7, y: 1, to: "shop" } },
-  shop: { inside: (x, y) => x >= 3 && x <= 16 && y >= 3 && y <= 9,       door: { x: 10, y: 10, to: "mine" } },
+  mine:     { inside: (x, y) => x >= 1 && x <= W - 2 && y >= 2 && y <= H - 2, door: { x: 7, y: 1, to: "upgrades" } },
+  upgrades: { inside: (x, y) => x >= 3 && x <= 16 && y >= 3 && y <= 9,       door: { x: 10, y: 10, to: "mine" } },
 };
-const ARRIVE = { shop: { x: 10, y: 9, dir: "up" }, mine: { x: 7, y: 2, dir: "down" } };
-const PEDESTALS = [
-  { x: 5, y: 3, item: "pickaxe" }, { x: 8, y: 3, item: "charm" },
-  { x: 11, y: 3, item: "dynamite" }, { x: 14, y: 3, item: "lunch" },
+const ARRIVE = { upgrades: { x: 10, y: 9, dir: "up" }, mine: { x: 7, y: 2, dir: "down" } };
+// Interactive stations in the Upgrades room
+const STATIONS = [
+  { id: "cart",  x: 3,  y: 3, name: "Upgrade Cart", verb: "browse upgrades" },
+  { id: "forge", x: 10, y: 3, name: "Forge",        verb: "smelt bars" },
+  { id: "anvil", x: 16, y: 3, name: "Anvil",        verb: "craft a pickaxe" },
 ];
+const ROOM_NAMES = { mine: "mine", upgrades: "Upgrades room" };
 const SPAWNS = [{ x: 4, y: 6 }, { x: 15, y: 6 }];
 
 const PEER_PREFIX = "mine-with-friends-";
@@ -355,7 +387,7 @@ const saveKey = code => "mwf-lobby-" + code;
 // ================= State =================
 function newPlayer(name, seat) {
   return { name, gold: 0, xp: 0, level: 1, pick: 0, mined: 0, fails: 0, streak: 0, ores: {},
-           charm: 0, dynamite: 0, room: "mine", x: SPAWNS[seat].x, y: SPAWNS[seat].y, dir: "down" };
+           charm: 0, dynamite: 0, bag: {}, bars: {}, room: "mine", x: SPAWNS[seat].x, y: SPAWNS[seat].y, dir: "down" };
 }
 function newGame() {
   const s = {
@@ -370,7 +402,9 @@ function newGame() {
 function migrate(s) {   // bring older saves up to date
   s.players.forEach((p, i) => {
     if (p.x == null) Object.assign(p, { x: SPAWNS[i].x, y: SPAWNS[i].y, dir: "down" });
-    if (!p.room) p.room = "mine";
+    if (!p.room || p.room === "shop") p.room = p.room === "shop" ? "upgrades" : "mine";
+    if (p.room === "upgrades" && !walkable(s, "upgrades", p.x, p.y)) Object.assign(p, ARRIVE.upgrades);
+    p.bag = p.bag || {}; p.bars = p.bars || {};
     p.charm = p.charm || 0; p.dynamite = p.dynamite || 0;
   });
   if (!s.rocks) { s.rocks = []; s.nextRockId = 1; }
@@ -406,9 +440,9 @@ function levelUp(p) {
 }
 
 const rockAt = (s, x, y) => s.rocks.find(r => r.x === x && r.y === y);
-const pedestalAt = (x, y) => PEDESTALS.find(p => p.x === x && p.y === y);
+const stationAt = (x, y) => STATIONS.find(p => p.x === x && p.y === y);
 const walkable = (s, room, x, y) =>
-  ROOMS[room].inside(x, y) && (room === "mine" ? !rockAt(s, x, y) : !pedestalAt(x, y));
+  ROOMS[room].inside(x, y) && (room === "mine" ? !rockAt(s, x, y) : !stationAt(x, y));
 const adjacent = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y) === 1;
 
 function allConnected(s) {   // rocks must never wall anyone in
@@ -479,9 +513,10 @@ function applyAction(seat, action) {
       gold = info.value * bonus;
       p.gold += gold; p.xp += info.xp; p.mined++; p.streak++;
       p.ores[info.name] = (p.ores[info.name] || 0) + bonus;
+      p.bag[info.name] = (p.bag[info.name] || 0) + bonus;
       state.team.mined++; state.team.goldEarned += gold;
       state.team.ores[info.name] = (state.team.ores[info.name] || 0) + bonus;
-      text = `${p.name} ${usedDynamite ? "blasted" : "mined"} ${bonus > 1 ? "a DOUBLE haul of " : ""}${info.name}! +${gold} gold, +${info.xp} XP`;
+      text = `${p.name} ${usedDynamite ? "blasted" : "mined"} ${bonus > 1 ? "2 " : ""}${info.name} ore! +${gold} gold, +${info.xp} XP`;
       if (levelUp(p)) text += ` — reached Miner level ${p.level}!`;
       state.rocks = state.rocks.filter(r => r !== rock);
       spawnRock(state);
@@ -497,18 +532,45 @@ function applyAction(seat, action) {
     return { text, ok, seat, fx: { room: "mine", x: rock.x, y: rock.y, color: info.color, label: ok ? `+${gold} 🪙` : "Crack!" } };
   }
 
-  if (action.type === "buy") {
-    if (p.room !== "shop") return null;
-    const ped = PEDESTALS.find(d => d.item === action.item), item = SHOP_ITEMS[action.item];
-    if (!ped || !item || !adjacent(p, ped) || !item.available(p)) return null;
+  // Everything below happens at a station in the Upgrades room and uses your turn.
+  const station = STATIONS.find(st => st.id === action.station);
+  if (p.room !== "upgrades" || !station || !adjacent(p, station)) return null;
+  const fx = (color, label) => ({ room: "upgrades", x: station.x, y: station.y, color, label });
+  let text;
+
+  if (action.type === "buy" && station.id === "cart") {
+    const item = CART_ITEMS[action.item];
+    if (!item || !item.available(p)) return null;
     const price = item.price(p);
     if (p.gold < price) return null;
     p.gold -= price;
-    let text = `${p.name} ${item.apply(p)} for ${price} gold.`;
+    text = `${p.name} ${item.apply(p)} for ${price} gold.`;
     if (levelUp(p)) text += ` Reached Miner level ${p.level}!`;
-    addLog(text, true);
-    endTurn();
-    return { text, ok: true, seat, fx: { room: "shop", x: ped.x, y: ped.y, color: "#f2c14e", label: `-${price} 🪙` } };
+    addLog(text, true); endTurn();
+    return { text, ok: true, seat, fx: fx("#f2c14e", `-${price} 🪙`) };
+  }
+
+  if (action.type === "smelt" && station.id === "forge") {
+    const ore = action.ore;
+    if (!SMELTABLE.includes(ore)) return null;
+    const n = Math.min(Math.max(1, Math.floor(action.count) || 1), maxSmelt(p, ore));
+    if (n < 1) return null;
+    p.bag[ore] -= n * ORE_PER_BAR;
+    if (coalPerBar(ore)) p.bag.Coal -= n * coalPerBar(ore);
+    p.bars[ore] = (p.bars[ore] || 0) + n;
+    text = `${p.name} smelted ${n} ${barName(ore)}${n > 1 ? "s" : ""} at the forge.`;
+    addLog(text, true); endTurn();
+    return { text, ok: true, seat, fx: fx("#ff8a1e", `+${n} ${barName(ore)}`) };
+  }
+
+  if (action.type === "craft" && station.id === "anvil") {
+    const c = craftCost(p);
+    if (!c || c.have < c.need) return null;
+    p.bars[c.ore] -= c.need;
+    p.pick = c.tier;
+    text = `${p.name} forged a ${PICKAXES[c.tier].name} Pickaxe on the anvil! ⛏️`;
+    addLog(text, true); endTurn();
+    return { text, ok: true, seat, fx: fx(PICKAXES[c.tier].color, `${PICKAXES[c.tier].name} Pickaxe!`) };
   }
   return null;
 }
@@ -1039,13 +1101,13 @@ const backgrounds = {
     px(DX + 2 * h, DY + 2 * h, 28, 30, "#1c130c");
     px(DX - 2 * h, DY - 6 * h, 36, 2, "#6b4a2e");
     px(DX + 4 * h, (d.y + 1) * TS + 2 * h, 24, 6, "#7a3b2a"); px(DX + 6 * h, (d.y + 1) * TS + 4 * h, 20, 2, "#a85a3a"); // mat
-    g.fillStyle = "#6b4a2e"; g.fillRect(DX - 4 * h, 2 * h, 40 * h, 12 * h);                   // sign board
-    g.fillStyle = "#3a2414"; g.fillRect(DX - 4 * h, 13 * h, 40 * h, 1 * h);
-    g.font = `bold ${11 * h}px "Trebuchet MS", sans-serif`; g.textAlign = "center"; g.textBaseline = "middle";
-    g.fillStyle = "#ffe08a"; g.fillText("SHOP", DX + 16 * h, 8.5 * h);
+    g.fillStyle = "#6b4a2e"; g.fillRect(DX - 18 * h, 2 * h, 68 * h, 12 * h);                  // sign board
+    g.fillStyle = "#3a2414"; g.fillRect(DX - 18 * h, 13 * h, 68 * h, 1 * h);
+    g.font = `bold ${9 * h}px "Trebuchet MS", sans-serif`; g.textAlign = "center"; g.textBaseline = "middle";
+    g.fillStyle = "#ffe08a"; g.fillText("UPGRADES", DX + 16 * h, 8.5 * h);
   }),
-  shop: makeBg((g, px, h, ri, rnd) => {
-    const inside = ROOMS.shop.inside;
+  upgrades: makeBg((g, px, h, ri, rnd) => {
+    const inside = ROOMS.upgrades.inside;
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const X = x * TS, Y = y * TS;
       if (inside(x, y)) {                         // wooden planks
@@ -1079,7 +1141,7 @@ const backgrounds = {
       }
     }
     // exit door (bottom) with rug
-    const d = ROOMS.shop.door, DX = d.x * TS, DY = d.y * TS;
+    const d = ROOMS.upgrades.door, DX = d.x * TS, DY = d.y * TS;
     px(DX, DY, 32, 32, "#120c08"); px(DX - 2 * h, DY, 2, 32, "#6b4a2e"); px(DX + 32 * h, DY, 2, 32, "#6b4a2e");
     px(DX + 2 * h, DY - 10 * h, 28, 8, "#7a2f3a"); px(DX + 4 * h, DY - 8 * h, 24, 4, "#a8475a");
     g.font = `bold ${8 * h}px "Trebuchet MS", sans-serif`; g.textAlign = "center"; g.textBaseline = "middle";
@@ -1087,16 +1149,63 @@ const backgrounds = {
   }),
 };
 
-// Shop item icons (authored 8x8, upscaled like everything else)
-const ICONS = {
-  charm: paint(["..GG.GG.", ".GGGGGGG", ".GGgGGG.", "..GgGG..", ".GGgGGG.", ".GGGgGGG", "....g...", "....g..."],
-               { G: "#3fdc7a", g: "#1f7a3e" }),
-  dynamite: paint([".....Y..", "....YO..", "...K....", ".KRRRK..", ".KRWRK..", ".KRRRK..", ".KRWRK..", ".KKKKK.."],
-                  { Y: "#ffe08a", O: "#ff8a1e", K: "#1a1410", R: "#d6333a", W: "#f1e6d3" }),
-  lunch: paint(["........", "..BBBB..", ".BBBBBB.", "KbbbbbbK", "GGGGGGGG", "MMMMMMMM", "KBBBBBBK", ".KKKKKK."],
-               { B: "#e8b060", b: "#c98a3e", G: "#4caf50", M: "#c0504a", K: "#5a3a1a" }),
+// Station sprites (authored 16x16, upscaled like everything else)
+const STATION_ART = {
+  cart: paint([
+    "................",
+    "....KKK..KKK....",
+    "...KYYYKKRRRK...",
+    "...KYyYKKRrRK.K.",
+    "..KKKKKKKKKKKKGK",
+    "..KWWWWWWWWWWKGK",
+    "..KWwWWwWWwWWK.K",
+    "..KWWWWWWWWWWKK.",
+    "..KwwwwwwwwwwK..",
+    "..KKKKKKKKKKKKKK",
+    "...KDK....KDK..K",
+    "..KDdDK..KDdDK..",
+    "..KDDDK..KDDDK..",
+    "...KKK....KKK...",
+    "................",
+    "................",
+  ], { K: "#1a1410", W: "#a06c40", w: "#7a4e2a", Y: "#e8b060", y: "#c98a3e", R: "#3fdc7a", r: "#1f7a3e", G: "#ffd23f", D: "#5a5550", d: "#8e8880" }),
+  forge: paint([
+    ".....KKKKKK.....",
+    ".....KGGGGK.....",
+    ".....KGgGGK.....",
+    "...KKKGGGGKKK...",
+    "..KGGGGGGGGGGK..",
+    "..KGgGGGGGGgGK..",
+    "..KGGKKKKKKGGK..",
+    "..KGKFFFFFFKGK..",
+    "..KGKFOOOOFKGK..",
+    "..KGKFOYYOFKGK..",
+    "..KGKKKKKKKKGK..",
+    "..KGGGGgGGGGGK..",
+    "..KggggggggggK..",
+    "..KKKKKKKKKKKK..",
+    "................",
+    "................",
+  ], { K: "#1a1410", G: "#6f6a64", g: "#4e4a46", F: "#b8401a", O: "#ff8a1e", Y: "#ffe08a" }),
+  anvil: paint([
+    "................",
+    "................",
+    "................",
+    "................",
+    "...KKKKKKKKKK...",
+    "..KMMMMMMMMMMKKK",
+    "..KmmmmmmmmmmmmK",
+    "...KKKmmmmmKKKK.",
+    ".....KmmmmK.....",
+    ".....KmmmmK.....",
+    "....KMMMMMMK....",
+    "...KWWWWWWWWK...",
+    "...KwWWWWWWwK...",
+    "...KwwwwwwwwK...",
+    "...KKKKKKKKKK...",
+    "................",
+  ], { K: "#1a1410", M: "#8a8f99", m: "#5c6069", W: "#7a4e2a", w: "#5a3a1a" }),
 };
-const SHOPKEEPER = { skin: 2, hairStyle: 3, hairColor: 5, hatStyle: 4, hatColor: 0, shirt: 5, pants: 2, shoes: 0 };
 
 // Client-only visual state
 const disp = [{ ...SPAWNS[0] }, { ...SPAWNS[1] }];
@@ -1111,6 +1220,7 @@ const myRoom = () => state.players[net.seat].room;
 function onResult(r) {
   render();
   if (!r) return;
+  if (r.seat === net.seat && r.fx && r.fx.room === "upgrades") closeMenu();
   showResult(r);
   if (r.fx) {
     if (r.fx.room === "mine") swing[r.seat] = performance.now();
@@ -1131,12 +1241,12 @@ function floatText(text, color) {
   floaters.push({ x: (me.x + .5) * TS, y: me.y * TS - 10, t0: performance.now(), text, color });
 }
 
-// What the local player is facing: a rock (mine) or a shop item (shop).
+// What the local player is facing: a rock (mine) or a station (Upgrades room).
 function facing() {
   const me = state.players[net.seat], [dx, dy] = DIRS[me.dir || "down"];
   const x = me.x + dx, y = me.y + dy;
   if (me.room === "mine") { const r = rockAt(state, x, y); return r ? { kind: "rock", rock: r } : null; }
-  const ped = pedestalAt(x, y); return ped ? { kind: "item", ped } : null;
+  const st = stationAt(x, y); return st ? { kind: "station", station: st } : null;
 }
 
 function drawLabel(text, x, y, color, size = 15) {
@@ -1168,33 +1278,19 @@ function drawRock(r, now) {
   drawLabel(String(r.level), bx, by + 1, "#fff", 11 * Math.min(1, 1.4 / ui) );
 }
 
-function drawPedestal(ped, now) {
-  const X = ped.x * TS, Y = ped.y * TS, h = S / 2;
-  ctx.fillStyle = "#00000055"; ctx.beginPath(); ctx.ellipse(X + TS / 2, Y + TS - 3, 18, 5, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = "#6f6a64"; ctx.fillRect(X + 6 * h, Y + 18 * h, 20 * h, 13 * h);
-  ctx.fillStyle = "#8e8880"; ctx.fillRect(X + 4 * h, Y + 16 * h, 24 * h, 4 * h);
-  ctx.fillStyle = "#4e4a46"; ctx.fillRect(X + 6 * h, Y + 28 * h, 20 * h, 3 * h);
-  const me = state.players[net.seat], item = SHOP_ITEMS[ped.item];
-  const avail = item.available(me);
-  const icon = ped.item === "pickaxe" ? pickSprite(Math.min(9, me.pick + 1), "up") : ICONS[ped.item];
-  const bob = Math.sin(now / 300 + ped.x) * 2;
-  ctx.globalAlpha = avail ? 1 : 0.35;
-  drawSprite(icon, X + 8 * h, Y - 2 * h + bob, 16 * h, 16 * h);
-  ctx.globalAlpha = 1;
-  const price = item.price(me);
-  drawLabel(avail ? `${price}🪙` : "—", X + TS / 2, Y + TS + 8 * Math.min(ui, 1.3), me.gold >= price && avail ? "#ffd23f" : "#a8977c", 12);
-}
-
-function drawShopkeeper(now) {
-  const sp = lookSprites(SHOPKEEPER).down.stand;
-  const x = 10 * TS, y = 1 * TS + 4 + Math.sin(now / 700) * 1.5;
-  drawSprite(sp, x, y);
-  // counter in front of the shopkeeper
-  const h = S / 2;
-  ctx.fillStyle = "#3a2414"; ctx.fillRect(8.5 * TS, 2 * TS + 6 * h, 3 * TS, 26 * h);
-  ctx.fillStyle = "#8a5a32"; ctx.fillRect(8.5 * TS, 2 * TS + 4 * h, 3 * TS, 5 * h);
-  ctx.fillStyle = "#a06c40"; ctx.fillRect(8.5 * TS, 2 * TS + 4 * h, 3 * TS, 1 * h);
-  ctx.fillStyle = "#6b4a2e"; for (let i = 0; i < 6; i++) ctx.fillRect(8.5 * TS + i * TS / 2 + 3 * h, 2 * TS + 12 * h, 1 * h, 18 * h);
+function drawStation(st, now) {
+  const X = st.x * TS, Y = st.y * TS;
+  ctx.fillStyle = "#00000055"; ctx.beginPath(); ctx.ellipse(X + TS / 2, Y + TS - 4, 22, 6, 0, 0, Math.PI * 2); ctx.fill();
+  const big = 1.3, w = TS * big;
+  drawSprite(STATION_ART[st.id], X + (TS - w) / 2, Y + TS - w, w, w);
+  if (st.id === "forge") {                                   // flickering fire glow
+    const f = Math.random();
+    ctx.fillStyle = `rgba(255,${120 + f * 60 | 0},30,${0.18 + f * 0.12})`;
+    ctx.beginPath(); ctx.arc(X + TS / 2, Y + TS * 0.55, TS * (0.8 + f * 0.1), 0, Math.PI * 2); ctx.fill();
+    if (f < .25) particles.push({ x: X + TS / 2 + (Math.random() - .5) * 10, y: Y + TS * 0.4, vx: (Math.random() - .5), vy: -1.5,
+                                  life: .6, color: "#ffb02e", size: S / 2 });
+  }
+  drawLabel(st.name, X + TS / 2, Y + TS + 8 * Math.min(ui, 1.3), "#ffe08a", 12);
 }
 
 function drawPlayer(seat, now) {
@@ -1228,7 +1324,7 @@ function drawPlayer(seat, now) {
 
 function drawTooltip() {
   const f = facing();
-  if (!f) return;
+  if (!f || menuOpen) return;
   const me = state.players[net.seat];
   const myTurn = net.connected && state.current === net.seat;
   const act = isTouch ? "Tap the button" : "[Space]";
@@ -1243,14 +1339,13 @@ function drawTooltip() {
     ];
     tx = rock.x; ty = rock.y; border = info.color;
   } else {
-    const item = SHOP_ITEMS[f.ped.item], avail = item.available(me), price = item.price(me);
-    lines = [
-      [`${item.name(me)}${avail ? ` · ${price}🪙` : ""}`, "#f1e6d3"],
-      [item.desc(me), "#c9b79a"],
-      !avail ? null : me.gold < price ? [`Need ${price - me.gold} more gold`, "#e0675a"]
-        : myTurn ? [`${act} to buy (uses your turn)`, "#f2c14e"] : ["Wait for your turn", "#a8977c"],
-    ];
-    tx = f.ped.x; ty = f.ped.y; border = "#f2c14e";
+    const st = f.station;
+    let info = "";
+    if (st.id === "anvil") { const c = craftCost(me); info = c ? `Next: ${PICKAXES[c.tier].name} Pickaxe — ${c.have}/${c.need} ${c.bar}s` : "Your pickaxe is maxed out!"; }
+    if (st.id === "forge") info = "2 ore + 1 Coal → 1 bar";
+    if (st.id === "cart") info = "Charms, dynamite, lunch & coal";
+    lines = [[st.name, "#f1e6d3"], [info, "#c9b79a"], [`${act} to ${st.verb}`, "#f2c14e"]];
+    tx = st.x; ty = st.y; border = "#f2c14e";
   }
   lines = lines.filter(Boolean);
   const fs = Math.round(13 * ui), lh = Math.round(17 * ui);
@@ -1288,8 +1383,7 @@ function frame(now) {
       }
       state.rocks.forEach(r => things.push({ y: r.y, draw: () => drawRock(r, now) }));
     } else {
-      drawShopkeeper(now);
-      PEDESTALS.forEach(p => things.push({ y: p.y, draw: () => drawPedestal(p, now) }));
+      STATIONS.forEach(st => things.push({ y: st.y, draw: () => drawStation(st, now) }));
     }
     [0, 1].forEach(i => { if (state.players[i].room === room) things.push({ y: disp[i].y + 0.01, draw: () => drawPlayer(i, now) }); });
     things.sort((a, b) => a.y - b.y).forEach(t => t.draw());
@@ -1319,7 +1413,7 @@ let nextStep = 0;
 const KEYMAP = { ArrowUp: "up", KeyW: "up", ArrowDown: "down", KeyS: "down", ArrowLeft: "left", KeyA: "left", ArrowRight: "right", KeyD: "right" };
 
 function inGame() { return net.code && !document.getElementById("game").classList.contains("hidden"); }
-function pressDir(d) { if (!held.includes(d)) { held.push(d); nextStep = 0; } }
+function pressDir(d) { if (menuOpen) closeMenu(); if (!held.includes(d)) { held.push(d); nextStep = 0; } }
 function releaseDir(d) { const i = held.indexOf(d); if (i >= 0) held.splice(i, 1); }
 
 function changeRoom(to) {
@@ -1328,7 +1422,8 @@ function changeRoom(to) {
   disp[net.seat].x = a.x; disp[net.seat].y = a.y; lastRoom[net.seat] = to;
   particles = []; floaters = [];
   sendMove(); render();
-  if (to === "shop") floaters.push({ x: 10.5 * TS, y: 1.2 * TS, t0: performance.now(), text: `Welcome, ${me.name}!`, color: "#ffe08a" });
+  closeMenu();
+  if (to === "upgrades") floaters.push({ x: 10.5 * TS, y: 2.2 * TS, t0: performance.now(), text: "Upgrades room", color: "#ffe08a" });
 }
 
 function stepInput(now) {
@@ -1351,30 +1446,109 @@ function act(target) {
   if (!inGame()) return;
   const me = state.players[net.seat];
   const f = target || facing();
-  if (!f) return floatText(me.room === "mine" ? "Face a rock to mine it" : "Face an item to buy it", "#a8977c");
+  if (!f) return floatText(me.room === "mine" ? "Face a rock to mine it" : "Face the cart, forge or anvil", "#a8977c");
+  if (f.kind === "station") return openMenu(f.station.id);   // looking is free; confirming in the menu uses your turn
   if (!net.connected) return floatText("Waiting for your friend", "#a8977c");
   if (state.current !== net.seat) return floatText("Not your turn!", "#e0675a");
-  const base = { x: me.x, y: me.y, dir: me.dir, room: me.room };
-  if (f.kind === "rock") {
-    const lock = lockReason(me, f.rock.level);
-    if (lock) return floatText(lock, "#e0675a");
-    sendAction({ type: "mine", rockId: f.rock.id, ...base });
-  } else {
-    const item = SHOP_ITEMS[f.ped.item];
-    if (!item.available(me)) return floatText("Sold out", "#a8977c");
-    if (me.gold < item.price(me)) return floatText("Not enough gold", "#e0675a");
-    sendAction({ type: "buy", item: f.ped.item, ...base });
-  }
+  const lock = lockReason(me, f.rock.level);
+  if (lock) return floatText(lock, "#e0675a");
+  sendAction({ type: "mine", rockId: f.rock.id, x: me.x, y: me.y, dir: me.dir, room: me.room });
 }
+
+// ================= Station menus =================
+let menuOpen = null;
+function openMenu(id) { menuOpen = id; held.length = 0; renderMenu(); }
+function closeMenu() { menuOpen = null; document.getElementById("menu").classList.add("hidden"); }
+
+function stationAction(extra) {
+  const me = state.players[net.seat];
+  if (!net.connected) return floatText("Waiting for your friend", "#a8977c");
+  if (state.current !== net.seat) return floatText("Not your turn!", "#e0675a");
+  sendAction({ ...extra, station: menuOpen, x: me.x, y: me.y, dir: me.dir, room: me.room });
+}
+
+const barChip = ore => `<span class="bar-ic" style="background:${ROCKS.find(r => r.name === ore).color}"></span>`;
+function invLine(p) {
+  const ores = ROCKS.filter(r => p.bag[r.name]).map(r => `${r.name} ${p.bag[r.name]}`).join(" · ") || "none";
+  const bars = SMELTABLE.filter(o => p.bars[o]).map(o => `${barName(o)} ${p.bars[o]}`).join(" · ") || "none";
+  return `<div class="menu-inv">🎒 Ore: ${ores}<br>🧱 Bars: ${bars}<br>🪙 Gold: ${p.gold}</div>`;
+}
+
+function renderMenu() {
+  const el = document.getElementById("menu");
+  if (!menuOpen || !state) return el.classList.add("hidden");
+  const me = state.players[net.seat];
+  if (me.room !== "upgrades") return closeMenu();
+  el.classList.remove("hidden");
+  const myTurn = net.connected && state.current === net.seat;
+  const st = STATIONS.find(s => s.id === menuOpen);
+  document.getElementById("menu-title").textContent = { cart: "🛒 Upgrade Cart", forge: "🔥 Forge", anvil: "⚒️ Anvil" }[st.id];
+  const note = document.getElementById("menu-note");
+  note.className = "menu-note" + (myTurn ? " turn" : "");
+  note.textContent = myTurn ? "Your turn — choosing one option below uses your turn."
+    : !net.connected ? "Waiting for your friend to join." : "Not your turn — you can look, but you'll have to wait to use it.";
+  const dis = ok => (myTurn && ok) ? "" : "disabled";
+  let html = "";
+
+  if (st.id === "cart") {
+    html = Object.entries(CART_ITEMS).map(([id, it]) => {
+      const avail = it.available(me), price = it.price(me), afford = me.gold >= price;
+      return `<div class="mrow ${avail ? "" : "dim"}"><div class="ic">${it.icon}</div>
+        <div class="txt"><b>${it.name}</b><small>${it.desc(me)}</small></div>
+        <div class="btns"><button class="btn-gold" data-buy="${id}" ${dis(avail && afford)}>${avail ? `${price} 🪙` : "Maxed"}</button></div></div>`;
+    }).join("");
+  }
+
+  if (st.id === "forge") {
+    html = SMELTABLE.map(ore => {
+      const have = me.bag[ore] || 0, coal = coalPerBar(ore), n = maxSmelt(me, ore);
+      const known = have > 0 || (me.bars[ore] || 0) > 0 || ROCKS.find(r => r.name === ore).level <= maxRock(me) + 1;
+      if (!known) return "";
+      const coalTxt = coal ? ` + ${coal} Coal <span class="${(me.bag.Coal || 0) >= coal ? "have" : "lack"}">(${me.bag.Coal || 0})</span>` : "";
+      return `<div class="mrow ${n ? "" : "dim"}">${barChip(ore)}
+        <div class="txt"><b>${barName(ore)} <small>· you have ${me.bars[ore] || 0}</small></b>
+          <small>${ORE_PER_BAR} ${ore} ore <span class="${have >= ORE_PER_BAR ? "have" : "lack"}">(${have})</span>${coalTxt} → 1 bar</small></div>
+        <div class="btns"><button data-smelt="${ore}" data-n="1" ${dis(n >= 1)}>Smelt 1</button>
+          <button class="btn-gold" data-smelt="${ore}" data-n="${n}" ${dis(n >= 2)}>All (${n})</button></div></div>`;
+    }).join("");
+  }
+
+  if (st.id === "anvil") {
+    const c = craftCost(me);
+    const cur = PICKAXES[me.pick];
+    html = `<div class="mrow"><div class="ic">⛏️</div><div class="txt"><b>Current: ${cur.name} Pickaxe</b>
+      <small>Power ${cur.power} · mines rocks up to level ${maxRock(me)}</small></div></div>`;
+    if (!c) html += `<div class="mrow"><div class="ic">🏆</div><div class="txt"><b>Maxed out!</b><small>Nothing stronger than Mythril.</small></div></div>`;
+    else {
+      const next = PICKAXES[c.tier];
+      html += `<div class="mrow">${barChip(c.ore)}<div class="txt"><b>Craft ${next.name} Pickaxe</b>
+        <small>Power ${next.power} · needs ${c.need} ${c.bar}s <span class="${c.have >= c.need ? "have" : "lack"}">(you have ${c.have})</span></small></div>
+        <div class="btns"><button class="btn-gold" data-craft ${dis(c.have >= c.need)}>Craft</button></div></div>`;
+      html += PICKAXES.slice(c.tier + 1, c.tier + 3).map((pk, i) => `<div class="mrow dim">${barChip(pk.name)}<div class="txt"><b>${pk.name} Pickaxe</b>
+        <small>Later: ${barsForTier(c.tier + 1 + i)} ${barName(pk.name)}s</small></div></div>`).join("");
+    }
+  }
+  document.getElementById("menu-body").innerHTML = html + invLine(me);
+}
+
+document.getElementById("menu").addEventListener("click", e => {
+  const b = e.target.closest("button");
+  if (!b || b.disabled) return;
+  if (b.id === "menu-close") return closeMenu();
+  if (b.dataset.buy) stationAction({ type: "buy", item: b.dataset.buy });
+  else if (b.dataset.smelt) stationAction({ type: "smelt", ore: b.dataset.smelt, count: +b.dataset.n });
+  else if (b.dataset.craft !== undefined) stationAction({ type: "craft" });
+});
 
 let actLabel = "";
 function updateActButton() {
-  const label = myRoom() === "shop" ? "🛒<br>Buy" : "⛏️<br>Mine";
+  const label = myRoom() === "upgrades" ? "✋<br>Use" : "⛏️<br>Mine";
   if (label !== actLabel) { document.getElementById("act-btn").innerHTML = label; actLabel = label; }
 }
 
 document.addEventListener("keydown", e => {
   if (!inGame() || e.target.tagName === "INPUT") return;
+  if (menuOpen) { if (e.code === "Escape" || e.code === "KeyQ") closeMenu(); return; }
   if (KEYMAP[e.code]) { e.preventDefault(); pressDir(KEYMAP[e.code]); }
   else if (e.code === "Space" || e.code === "Enter" || e.code === "KeyE") { e.preventDefault(); if (!e.repeat) act(); }
 });
@@ -1390,7 +1564,7 @@ canvas.addEventListener("pointerdown", e => {
   const me = state.players[net.seat];
   let target = null;
   if (me.room === "mine") { const rock = rockAt(state, tx, ty); if (rock) target = { kind: "rock", rock, x: tx, y: ty }; }
-  else { const ped = pedestalAt(tx, ty); if (ped) target = { kind: "item", ped, x: tx, y: ty }; }
+  else { const st = stationAt(tx, ty); if (st) target = { kind: "station", station: st, x: tx, y: ty }; }
   if (!target) return;
   if (!adjacent(me, target)) return floatText("Walk next to it first", "#a8977c");
   me.dir = tx > me.x ? "right" : tx < me.x ? "left" : ty > me.y ? "down" : "up";
@@ -1533,13 +1707,15 @@ function renderPlayer(i) {
   el.classList.toggle("active", net.connected && state.current === i);
   const pct = p.level >= 10 ? 100 : Math.min(100, (p.xp / xpForLevel(p.level)) * 100);
   const mine = i === net.seat;
-  const ores = ROCKS.filter(r => p.ores[r.name]).map(r =>
-    `<span class="chip" style="border-color:${r.color}">${r.name} ×${p.ores[r.name]}</span>`).join("")
-    || `<span class="chip">No ores yet</span>`;
+  const ores = ROCKS.filter(r => p.bag[r.name]).map(r =>
+    `<span class="chip" style="border-color:${r.color}">${r.name} ore ×${p.bag[r.name]}</span>`).join("")
+    || `<span class="chip">No ore in bag</span>`;
+  const bars = SMELTABLE.filter(o => p.bars[o]).map(o =>
+    `<span class="chip" style="border-color:${ROCKS.find(r => r.name === o).color}">🧱 ${barName(o)} ×${p.bars[o]}</span>`).join("");
   const waiting = i === 1 && net.isHost && !net.connected;
   el.innerHTML = `
     <div class="phead">
-      <span class="pname">${escapeHtml(waiting ? "Waiting for player…" : p.name)}<small>${mine ? "(you)" : ""}${i === 0 ? " · host" : ""} · in the ${p.room}</small></span>
+      <span class="pname">${escapeHtml(waiting ? "Waiting for player…" : p.name)}<small>${mine ? "(you)" : ""}${i === 0 ? " · host" : ""} · ${p.room === "mine" ? "in the mine" : "in Upgrades"}</small></span>
       <span class="turn-badge">${mine ? "YOUR TURN" : "THEIR TURN"}</span>
     </div>
     <div class="stats">
@@ -1547,7 +1723,7 @@ function renderPlayer(i) {
       <div class="stat"><small>Level</small><b>${p.level}${p.level >= 10 ? " max" : ""}</b><div class="bar"><i style="width:${pct}%"></i></div></div>
       <div class="stat"><small>Mined/failed</small><b>${p.mined}/${p.fails}</b></div>
     </div>
-    <div class="inv"><span class="chip">⛏️ ${PICKAXES[p.pick].name} (lvl ${maxRock(p)} max)</span>${buffs(p) ? `<span class="chip">${buffs(p)}</span>` : ""}${ores}</div>`;
+    <div class="inv"><span class="chip">⛏️ ${PICKAXES[p.pick].name} (lvl ${maxRock(p)} max)</span>${buffs(p) ? `<span class="chip">${buffs(p)}</span>` : ""}${ores}${bars}</div>`;
 }
 
 function renderTeam() {
@@ -1578,15 +1754,15 @@ function renderHud() {
   document.getElementById("turn-num").textContent = state.turn;
   const el = document.getElementById("turn-line");
   if (!net.connected) { el.textContent = "Waiting for both players"; return; }
-  const where = other.room !== me.room ? ` (in the ${other.room})` : "";
+  const where = other.room !== me.room ? (other.room === "mine" ? " (in the mine)" : " (in Upgrades)") : "";
   el.innerHTML = state.current === net.seat
-    ? `<span class="you">Your turn</span> — mine a rock or buy something`
+    ? `<span class="you">Your turn</span> — mine, smelt, craft or buy`
     : `${escapeHtml(state.players[state.current].name)}'s turn${where}`;
 }
 
 function render() {
   if (!state) return;
-  renderPlayer(0); renderPlayer(1); renderTeam(); renderHud();
+  renderPlayer(0); renderPlayer(1); renderTeam(); renderHud(); renderMenu();
 }
 
 function escapeHtml(s) {
