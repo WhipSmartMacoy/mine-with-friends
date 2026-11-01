@@ -313,7 +313,7 @@
 // ================= Version & fresh assets =================
 // BUILD changes with every release. Asset URLs carry it, so phones can't keep showing stale images,
 // and on load we check whether the server has a newer build than the one running.
-const BUILD = "2026.11.01-1546";
+const BUILD = "2026.11.01-1605";
 const withV = url => /^(https?:|data:|blob:)/.test(url) ? url : url + (url.includes("?") ? "&" : "?") + "v=" + BUILD;
 async function checkForUpdate() {
   try {
@@ -482,6 +482,7 @@ function worldTile(x, y) {
     if (y === PATH_Y && x >= CAVE.x && x <= SHOP_ROOM.rx * W + 11) return "path";       // road: mine – home – shop
     if (x === CAVE.x && y > CAVE.y && y < PATH_Y) return "path";
     if (x === HOME.x && y > HOUSE.y + 1 && y < PATH_Y) return "path";
+    if (STATIONS.some(st => st.x === x && y > st.y && y < PATH_Y)) return "path";      // spurs up to cart / forge / anvil
     const town = [HOME_ROOM, SHOP_ROOM, CAVE_ROOM].some(r => inRoom(x, y, r));
     const r = hash2(x, y);
     if (town) return r < 0.07 ? "flower" : "grass";
@@ -1702,13 +1703,21 @@ function treeGrid() {
 }
 const TREE_ART = paint(treeGrid(), { K: "#1e2a1a", L: "#3f9a46", l: "#7ad060", T: "#7a4e2a" }, { passes: 0 });
 const worldBgCache = new Map();
+// "Grass BG" (one room-sized texture) and "Brick Path" (one tile). Until they load the hand-drawn look is used.
+const WORLD_TEX = {};
+Promise.all([loadImage("sprites/tiles/grass-bg.png"), loadImage("sprites/tiles/brick-path.png")])
+  .then(([grass, brick]) => { WORLD_TEX.grass = grass; WORLD_TEX.brick = brick; worldBgCache.clear(); }).catch(() => {});
 function worldRoomBg(rx, ry) {
   const key = rx + "," + ry;
   if (worldBgCache.has(key)) { const c = worldBgCache.get(key); worldBgCache.delete(key); worldBgCache.set(key, c); return c; }
   const ox = rx * W, oy = ry * H;
   const c = makeBg((g, px, h, ri, rnd) => {
     const tl = (gx, gy) => worldTile(gx, gy);
-    const over = [];
+    const over = [], tex = WORLD_TEX.grass && WORLD_TEX.brick;
+    if (tex) {   // grass layer: mirror every other room so the texture's edges always line up seamlessly
+      g.save(); g.translate(rx % 2 ? W * TS : 0, ry % 2 ? H * TS : 0); g.scale(rx % 2 ? -1 : 1, ry % 2 ? -1 : 1);
+      g.drawImage(WORLD_TEX.grass, 0, 0, W * TS, H * TS); g.restore();
+    }
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const gx = ox + x, gy = oy + y, t = tl(gx, gy), X = x * TS, Y = y * TS;
       const grassBase = ["#6cbf4f", "#66b84a", "#72c455"][Math.floor(hash2(gx, gy, 3) * 3)];
@@ -1720,6 +1729,15 @@ function worldRoomBg(rx, ry) {
         if (tl(gx, gy + 1) !== "water") px(X, Y + 30 * h, 32, 2, "#2a6ab0");
         if (tl(gx - 1, gy) !== "water") px(X, Y, 2, 32, shore);
         if (tl(gx + 1, gy) !== "water") px(X + 30 * h, Y, 2, 32, "#2a6ab0");
+        continue;
+      }
+      if (t === "path" && tex) {
+        g.drawImage(WORLD_TEX.brick, X, Y, TS, TS);
+        const edge = "rgba(20,30,10,0.35)";                    // soft shadow where bricks meet grass
+        if (tl(gx, gy - 1) !== "path") px(X, Y, 32, 2, edge);
+        if (tl(gx, gy + 1) !== "path") px(X, Y + 30 * h, 32, 2, edge);
+        if (tl(gx - 1, gy) !== "path") px(X, Y, 2, 32, edge);
+        if (tl(gx + 1, gy) !== "path") px(X + 30 * h, Y, 2, 32, edge);
         continue;
       }
       if (t === "path") {
@@ -1737,8 +1755,10 @@ function worldRoomBg(rx, ry) {
         }
         continue;
       }
-      px(X, Y, 32, 32, grassBase);                               // grass (also under trees, flowers, house)
-      for (let i = 0; i < 5; i++) { const bx = X + ri(30) * h, by = Y + ri(28) * h; px(bx, by, 1, 3, rnd() < .5 ? "#4f9a3c" : "#8ad86a"); }
+      if (!tex) {                                                // hand-drawn grass (also under trees, flowers, house)
+        px(X, Y, 32, 32, grassBase);
+        for (let i = 0; i < 5; i++) { const bx = X + ri(30) * h, by = Y + ri(28) * h; px(bx, by, 1, 3, rnd() < .5 ? "#4f9a3c" : "#8ad86a"); }
+      }
       if (t === "flower") {
         const fc = ["#ffffff", "#ffe070", "#ff8ab0", "#b0a0ff"][Math.floor(hash2(gx, gy, 5) * 4)];
         for (let i = 0; i < 3; i++) { const bx = X + ri(26) * h + 2 * h, by = Y + ri(26) * h + 2 * h; px(bx, by, 2, 2, fc); px(bx + h / 2, by + h / 2, 1, 1, "#ffb030"); }
