@@ -776,14 +776,57 @@ const mirror = rows => rows.map(r => [...r.padEnd(16, ".")].reverse().join(""));
 const rot90 = rows => rows[0].split("").map((_, c) => rows.map(r => r[c]).reverse().join(""));
 
 function mkCanvas(w, h) { const c = document.createElement("canvas"); c.width = w; c.height = h; return c; }
-function paint(rows, pal) {
-  const w = Math.max(...rows.map(r => r.length)), c = mkCanvas(w * S, rows.length * S), g = c.getContext("2d");
-  rows.forEach((r, y) => [...r].forEach((ch, x) => {
-    if (ch === "." || !pal[ch]) return;
-    g.fillStyle = pal[ch]; g.fillRect(x * S, y * S, S, S);
+// 32-bit look: sprites are authored on a 16 grid, then upscaled to 32x32 with Scale2x
+// (smooths diagonals), outlines are thinned back to 1px, and a light pass adds a top-left
+// highlight and bottom-right shadow to every coloured region.
+const K = 4 / 3;         // world units → device pixels (48-unit tile = 64px = 32 art pixels × 2)
+const HD_PX = 2;         // device pixels per 32-res art pixel
+const OPAQUE_NO_SHADE = new Set(["K", "E", "L", "."]);
+function scale2x(grid) {
+  const h = grid.length, w = grid[0].length, at = (x, y) => (y < 0 || y >= h || x < 0 || x >= w) ? "." : grid[y][x];
+  const out = Array.from({ length: h * 2 }, () => new Array(w * 2));
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const P = at(x, y), A = at(x, y - 1), B = at(x + 1, y), C = at(x - 1, y), D = at(x, y + 1);
+    out[2 * y][2 * x]         = C === A && C !== D && A !== B ? A : P;
+    out[2 * y][2 * x + 1]     = A === B && A !== C && B !== D ? B : P;
+    out[2 * y + 1][2 * x]     = D === C && D !== B && C !== A ? C : P;
+    out[2 * y + 1][2 * x + 1] = B === D && B !== A && D !== C ? D : P;
+  }
+  return out;
+}
+function thinOutline(g) {
+  const h = g.length, w = g[0].length, at = (x, y) => (y < 0 || y >= h || x < 0 || x >= w) ? "." : g[y][x];
+  const colored = c => c !== "." && c !== "K";
+  return g.map((row, y) => row.map((ch, x) => {
+    if (ch !== "K") return ch;
+    for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]])
+      if (at(x + dx, y + dy) === "." && at(x - dx, y - dy) === "K" && colored(at(x - 2 * dx, y - 2 * dy))) return ".";
+    return ch;
   }));
+}
+const shadeCache = {};
+const shadeOf = (hex, f) => shadeCache[hex + f] || (shadeCache[hex + f] = hex.startsWith("#") ? shade(hex, f) : hex);
+function paint(rows, pal) {
+  const w = Math.max(...rows.map(r => r.length));
+  let g = rows.map(r => [...r.padEnd(w, ".")]);
+  g = thinOutline(scale2x(g));
+  const h2 = g.length, w2 = g[0].length, at = (x, y) => (y < 0 || y >= h2 || x < 0 || x >= w2) ? "." : g[y][x];
+  const edge = c => c === "." || c === "K";
+  const c = mkCanvas(w2 * HD_PX, h2 * HD_PX), ctx2 = c.getContext("2d");
+  for (let y = 0; y < h2; y++) for (let x = 0; x < w2; x++) {
+    const ch = g[y][x];
+    if (ch === "." || !pal[ch]) continue;
+    let col = pal[ch];
+    if (!OPAQUE_NO_SHADE.has(ch)) {
+      if (edge(at(x, y - 1)) || edge(at(x - 1, y))) col = shadeOf(pal[ch], 1.18);
+      else if (edge(at(x, y + 1)) || edge(at(x + 1, y))) col = shadeOf(pal[ch], 0.8);
+    }
+    ctx2.fillStyle = col; ctx2.fillRect(x * HD_PX, y * HD_PX, HD_PX, HD_PX);
+  }
   return c;
 }
+// Draw an HD sprite at world-unit position (it carries 4/3 device px per unit).
+const drawSprite = (img, x, y, w, h) => ctx.drawImage(img, x, y, w ?? img.width / K, h ?? img.height / K);
 function shade(hex, f) {
   const n = parseInt(hex.slice(1), 16);
   const ch = s => Math.max(0, Math.min(255, Math.round(((n >> s) & 255) * f)));
@@ -831,14 +874,15 @@ function rockSprite(level, cracks) {
   const ore = ROCKS[level - 1].color;
   const c = paint(ROCK_MAP, { K: "#1a1410", G: "#6f6a64", g: "#4e4a46", l: "#8e8880", O: ore, o: shade(ore, 1.35) });
   const g = c.getContext("2d");
-  for (let i = 0; i < cracks; i++) g.drawImage(paint(CRACKS[i], { K: "#15110e" }), 0, 4 * S);
+  for (let i = 0; i < cracks; i++) g.drawImage(paint(CRACKS[i], { K: "#15110e" }), 0, 4 * 2 * HD_PX);
   return (rockCache[key] = c);
 }
 
 // ================= Room rendering =================
 const canvas = document.getElementById("mine");
-const world = mkCanvas(W * TS, H * TS);          // whole room is drawn here…
+const world = mkCanvas(W * TS * K, H * TS * K);  // whole room is drawn here (at 32-bit resolution)…
 const ctx = world.getContext("2d");
+ctx.setTransform(K, 0, 0, K, 0, 0);
 ctx.imageSmoothingEnabled = false;
 const vctx = canvas.getContext("2d");              // …then the visible part is copied to the screen
 const isTouch = matchMedia("(hover: none)").matches;
@@ -859,8 +903,8 @@ function updateView() {
     view = { x: 0, y: 0, w: W * TS, h: H * TS };
     ui = window.innerWidth < 780 ? 1.6 : 1;
   }
-  if (canvas.width !== view.w || canvas.height !== view.h) {
-    canvas.width = view.w; canvas.height = view.h; vctx.imageSmoothingEnabled = false;
+  if (canvas.width !== view.w * K || canvas.height !== view.h * K) {
+    canvas.width = view.w * K; canvas.height = view.h * K; vctx.imageSmoothingEnabled = false;
   }
 }
 function setViewMode(m) {
@@ -871,27 +915,41 @@ function setViewMode(m) {
 
 const TORCHES = [4, 10, 15];
 const background = (() => {
-  const c = mkCanvas(W * TS, H * TS), g = c.getContext("2d");
+  const c = mkCanvas(W * TS * K, H * TS * K), g = c.getContext("2d");
+  g.setTransform(K, 0, 0, K, 0, 0);
   let seed = 12345; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  const px = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x, y, w * S, h * S); };
+  const h = S / 2;   // one 32-res art pixel, in world units
+  const px = (x, y, w, hh, col) => { g.fillStyle = col; g.fillRect(x, y, w * h, hh * h); };
+  const ri = n => Math.floor(rnd() * n);
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const X = x * TS, Y = y * TS;
     if (inside(x, y)) {
-      px(X, Y, 16, 16, ["#3a2f25", "#3d3127", "#372c23"][Math.floor(rnd() * 3)]);
-      for (let i = 0; i < 6; i++) px(X + Math.floor(rnd() * 15) * S, Y + Math.floor(rnd() * 15) * S, 1, 1, rnd() < .5 ? "#2c231b" : "#4a3c2f");
-      if (y === 2) px(X, Y, 16, 2, "#00000055");
+      px(X, Y, 32, 32, ["#3a2f25", "#3d3127", "#372c23"][ri(3)]);
+      for (let i = 0; i < 16; i++) px(X + ri(31) * h, Y + ri(31) * h, 1, 1, rnd() < .5 ? "#2c231b" : "#4a3c2f");
+      for (let i = 0; i < 2; i++) {          // little pebbles with a highlight
+        const bx = X + ri(28) * h, by = Y + ri(29) * h;
+        px(bx, by, 3, 2, "#4f4134"); px(bx, by, 2, 1, "#655444"); px(bx + h, by + 2 * h, 3, 1, "#251d16");
+      }
+      if (y === 2) { px(X, Y, 32, 4, "#00000055"); px(X, Y, 32, 2, "#00000044"); }
     } else if (y <= 1 && x >= 1 && x <= W - 2) {
-      px(X, Y, 16, 16, y === 0 ? "#463b32" : "#5b4e43");
-      px(X, Y, 16, 1, "#2e2620"); px(X, Y + 8 * S, 16, 1, "#2e2620");
-      const off = (y + x) % 2 ? 0 : 8;
-      px(X + off * S, Y, 1, 8, "#2e2620"); px(X + ((off + 8) % 16) * S, Y + 8 * S, 1, 8, "#2e2620");
-      for (let i = 0; i < 3; i++) px(X + Math.floor(rnd() * 15) * S, Y + Math.floor(rnd() * 15) * S, 1, 1, "#6a5b4e");
+      px(X, Y, 32, 32, y === 0 ? "#463b32" : "#5b4e43");
+      for (const by of [0, 16]) {
+        px(X, Y + by * h, 32, 1, "#2e2620");          // mortar
+        px(X, Y + (by + 1) * h, 32, 1, y === 0 ? "#53463b" : "#6b5d50");   // brick top light
+        px(X, Y + (by + 15) * h, 32, 1, y === 0 ? "#3a3029" : "#4a3f36"); // brick bottom shade
+      }
+      const off = (y + x) % 2 ? 0 : 16;
+      px(X + off * h, Y, 1, 16, "#2e2620"); px(X + ((off + 16) % 32) * h, Y + 16 * h, 1, 16, "#2e2620");
+      for (let i = 0; i < 6; i++) px(X + ri(31) * h, Y + ri(31) * h, 1, 1, "#6a5b4e");
     } else {
-      px(X, Y, 16, 16, "#1d1814");
-      for (let i = 0; i < 5; i++) px(X + Math.floor(rnd() * 15) * S, Y + Math.floor(rnd() * 15) * S, 1, 1, "#2a231d");
+      px(X, Y, 32, 32, "#1d1814");
+      for (let i = 0; i < 12; i++) px(X + ri(31) * h, Y + ri(31) * h, 1, 1, rnd() < .7 ? "#2a231d" : "#151210");
     }
   }
-  for (const tx of TORCHES) { px(tx * TS + 7 * S, 1 * TS + 6 * S, 2, 6, "#5a3a22"); px(tx * TS + 6 * S, 1 * TS + 5 * S, 4, 1, "#3a2414"); }
+  for (const tx of TORCHES) {
+    px(tx * TS + 14 * h, TS + 12 * h, 4, 12, "#5a3a22"); px(tx * TS + 14 * h, TS + 12 * h, 1, 12, "#7a5232");
+    px(tx * TS + 12 * h, TS + 10 * h, 8, 2, "#3a2414");
+  }
   return c;
 })();
 
@@ -973,12 +1031,12 @@ function drawPlayer(seat, now) {
   ctx.globalAlpha = present ? 1 : 0.35;
   // shadow
   ctx.fillStyle = "#00000055"; ctx.beginPath(); ctx.ellipse(x + TS / 2, d.y * TS + TS - 4, 15, 5, 0, 0, Math.PI * 2); ctx.fill();
-  if (sw < 220) ctx.drawImage(pickSprite(p.pick, "raised"), x + 8 * S, y - 5 * S);
-  ctx.drawImage(img, x, y);
+  if (sw < 220) drawSprite(pickSprite(p.pick, "raised"), x + 8 * S, y - 5 * S);
+  drawSprite(img, x, y);
   if (sw >= 220 && sw < 480) {
     const dir = p.dir || "down";
     const off = { right: [11, 5], left: [-3, 5], down: [4, 11], up: [4, -5] }[dir];
-    ctx.drawImage(pickSprite(p.pick, dir), x + off[0] * S, y + off[1] * S);
+    drawSprite(pickSprite(p.pick, dir), x + off[0] * S, y + off[1] * S);
   }
   ctx.globalAlpha = 1;
   const name = present ? p.name : p.name + " (away)";
@@ -1024,7 +1082,7 @@ function frame(now) {
   stepInput(now);
   updateView();
 
-  ctx.drawImage(background, 0, 0);
+  ctx.drawImage(background, 0, 0, W * TS, H * TS);
   for (const tx of TORCHES) {   // flickering torches
     const f = Math.random();
     ctx.fillStyle = "#ff8a1e33"; ctx.beginPath(); ctx.arc(tx * TS + 8 * S, TS + 3 * S, 40 + f * 6, 0, Math.PI * 2); ctx.fill();
@@ -1049,7 +1107,7 @@ function frame(now) {
   }
   ctx.globalAlpha = 1;
   drawTooltip(now);
-  vctx.drawImage(world, view.x, view.y, view.w, view.h, 0, 0, view.w, view.h);
+  vctx.drawImage(world, view.x * K, view.y * K, view.w * K, view.h * K, 0, 0, canvas.width, canvas.height);
   requestAnimationFrame(frame);
 }
 
