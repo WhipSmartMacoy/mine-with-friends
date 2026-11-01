@@ -785,105 +785,140 @@ function randomLook() {
   return l;
 }
 
-// ---- Sprite parts (16x16). "." = transparent. Layers: body → hair → hat.
-// K outline · S/s skin · E eyes · C/c shirt · O/o pants · B shoes · R/r hair · Y/y hat · L lamp
-const BASE_HEAD = {
-  down: ["................", "................", ".....KKKKKK.....", "....KSSSSSSK....", "...KSSSSSSSSK...",
-         "...KSSSSSSSSK...", "...KSESSSSESK...", "...KpESSSSEpK...", "....KsSSSSsK...."],
-  up:   ["................", "................", ".....KKKKKK.....", "....KSSSSSSK....", "...KSSSSSSSSK...",
-         "...KSSSSSSSSK...", "...KSSSSSSSSK...", "...KSSSSSSSSK...", "....KsSSSSsK...."],
-  right:["................", "................", "....KKKKKK......", "...KSSSSSSK.....", "...KSSSSSSSK....",
-         "...KSSSSSSSK....", "...KSSSSSESK....", "...KSSSSpESK....", "....KsSSSsK....."],
-};
-const HAIR = {
-  down: {
-    Short: { 2: ".....KKKKKK.....", 3: "....KRRRRRRK....", 4: "...KRRRRRRRRK...", 5: "...KR......RK..." },
-    Long:  { 2: ".....KKKKKK.....", 3: "....KRRRRRRK....", 4: "...KRRRRRRRRK...", 5: "...KR......RK...",
-             6: "..KRR......RRK..", 7: "..KRR......RRK..", 8: "..KRRK....KRRK..", 9: "..KrK......KrK.." },
-    Spiky: { 1: ".....K.KK.K.....", 2: "....KRKRRKRK....", 3: "...KRRRRRRRRK...", 4: "...KRRRRRRRRK...", 5: "...KR......RK..." },
-    Bald:  {},
-  },
-  up: {
-    Short: { 2: ".....KKKKKK.....", 3: "....KRRRRRRK....", 4: "...KRRRRRRRRK...", 5: "...KRRRRRRRRK...",
-             6: "...KRRRRRRRRK...", 7: "...KrRRRRRRrK...", 8: "....KrrrrrrK...." },
-    Long:  { 2: ".....KKKKKK.....", 3: "....KRRRRRRK....", 4: "...KRRRRRRRRK...", 5: "...KRRRRRRRRK...",
-             6: "...KRRRRRRRRK...", 7: "...KRRRRRRRRK...", 8: "...KRRRRRRRRK...", 9: "..KRRRRRRRRRRK..", 10: "..KrrRRRRRRrrK.." },
-    Spiky: { 1: ".....K.KK.K.....", 2: "....KRKRRKRK....", 3: "...KRRRRRRRRK...", 4: "...KRRRRRRRRK...", 5: "...KRRRRRRRRK...",
-             6: "...KRRRRRRRRK...", 7: "...KrRRRRRRrK...", 8: "....KrrrrrrK...." },
-    Bald:  {},
-  },
-  right: {
-    Short: { 2: "....KKKKKK......", 3: "...KRRRRRRK.....", 4: "...KRRRRRRRK....", 5: "...KRRR", 6: "...KRR", 7: "...KR" },
-    Long:  { 2: "....KKKKKK......", 3: "...KRRRRRRK.....", 4: "...KRRRRRRRK....", 5: "...KRRR", 6: "...KRR", 7: "...KRR",
-             8: "...KRRK", 9: "...KrK", 10: "...KK" },
-    Spiky: { 1: "....K.K.K.......", 2: "...KRKRKRK......", 3: "...KRRRRRRK.....", 4: "...KRRRRRRRK....", 5: "...KRRR", 6: "...KRR", 7: "...KR" },
-    Bald:  {},
-  },
-};
-const HATS = {
-  down: {
-    Helmet: { 1: ".....KKKKKK.....", 2: "....KYYLLYYK....", 3: "...KYYYLLYYYK...", 4: "...KyyyyyyyyK..." },
-    Cap:    { 2: ".....KKKKKK.....", 3: "....KYYYYYYK....", 4: "...KYYYYYYYYK...", 5: "..KyyyyyyyyyyK.." },
-    Beanie: { 1: ".......KK.......", 2: ".....KKYYKK.....", 3: "....KYYYYYYK....", 4: "...KyYyYyYyYK...", 5: "...KyyyyyyyyK..." },
-    Cowboy: { 1: "......KKKK......", 2: ".....KYYYYK.....", 3: "....KYYYYYYK....", 4: ".KKKyyyyyyyyKKK.", 5: "KYYYYYYYYYYYYYYK" },
-    None:   {},
-  },
-  up: {
-    Helmet: { 1: ".....KKKKKK.....", 2: "....KYYYYYYK....", 3: "...KYYYYYYYYK...", 4: "...KyyyyyyyyK..." },
-    Cap:    { 2: ".....KKKKKK.....", 3: "....KYYYYYYK....", 4: "...KYYYYYYYYK...", 5: "...KyyyyyyyyK..." },
-    Beanie: { 1: ".......KK.......", 2: ".....KKYYKK.....", 3: "....KYYYYYYK....", 4: "...KyYyYyYyYK...", 5: "...KyyyyyyyyK..." },
-    Cowboy: { 1: "......KKKK......", 2: ".....KYYYYK.....", 3: "....KYYYYYYK....", 4: ".KKKyyyyyyyyKKK.", 5: "KYYYYYYYYYYYYYYK" },
-    None:   {},
-  },
-  right: {
-    Helmet: { 1: "....KKKKKK......", 2: "...KYYYYYLK.....", 3: "...KYYYYYLLK....", 4: "...KyyyyyyyyK..." },
-    Cap:    { 2: "....KKKKKK......", 3: "...KYYYYYYK.....", 4: "...KYYYYYYYKKKK." },
-    Beanie: { 1: "......KK........", 2: "....KKYYKK......", 3: "...KYYYYYYK.....", 4: "...KyYyYyYyK....", 5: "...KyyyyyyyK...." },
-    Cowboy: { 1: ".....KKKK.......", 2: "....KYYYYK......", 3: "...KYYYYYYK.....", 4: ".KKyyyyyyyyyKK..", 5: "KYYYYYYYYYYYYYK." },
-    None:   {},
-  },
-};
-const BODY_FRONT = [
-  "...KCCKssKCCK...",
-  "..KCCCCCCCCCCK..",
-  "..KSKcOOOOcKSK..",
-  "...KKOOOOOOKK...",
-];
-const BODY_BACK = [
-  "...KCCCCCCCCK...",
-  "..KCCCCCCCCCCK..",
-  "..KSKcOOOOcKSK..",
-  "...KKOOOOOOKK...",
-];
-const LEGS_STAND = ["....KOOKKOOK....", "....KBBKKBBK....", "....KKKKKKKK...."];
-const LEGS_WALK = ["....KOOKKOOK....", "...KBBKKOOK.....", "...KKKK.KBBK...."];
-const SIDE_BODY = ["....KCCCCCK.....", "...KCCCCCCCK....", "...KCcCSKCK.....", "....KOOOOOK....."];
-const SIDE_STAND = ["....KOOKOOK.....", "....KBBKBBK.....", "....KKKKKKKK...."];
-const SIDE_WALK = ["...KOOK.KOOK....", "..KBBK...KBBK...", "..KKKK...KKKK..."];
+// ---- ¾-view chibi miners, drawn natively on a 32x32 grid ----
+// Letters are palette slots; "." is transparent. Outlines, shading and eye highlights are added by paint().
+// S/s skin · p blush · E eyes · M mouth · R/r hair · Y/y hat · L lamp · W white · C/c shirt · O/o pants · B shoes
+function newGrid() { return Array.from({ length: 32 }, () => Array(32).fill(".")); }
+function put(g, x, y, ch) { x = Math.round(x); y = Math.round(y); if (x >= 0 && x < 32 && y >= 0 && y < 32) g[y][x] = ch; }
+function rect(g, x0, y0, x1, y1, ch) { for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) put(g, x, y, ch); }
+function ell(g, cx, cy, rx, ry, ch, clip) {
+  for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
+    const dx = (x + .5 - cx) / rx, dy = (y + .5 - cy) / ry;
+    if (dx * dx + dy * dy <= 1 && (!clip || clip(x, y))) put(g, x, y, ch);
+  }
+}
+function spike(g, sx, baseY, h, lean, ch) {   // upward hair spike
+  for (let r = 0; r < h; r++) { const w = Math.max(1, Math.round((h - r) * 0.8)); const cx = sx + lean * r / h; rect(g, Math.round(cx - w / 2), baseY - r, Math.round(cx + w / 2) - 1, baseY - r, ch); }
+}
 
-function overlay(rows, layer) {
-  const out = rows.map(r => r.padEnd(16, "."));
-  for (const [y, line] of Object.entries(layer)) if (out[y] !== undefined)
-    out[y] = [...out[y]].map((ch, x) => (line[x] && line[x] !== ".") ? line[x] : ch).join("");
-  return out;
+// frame: 0 = standing, 1–4 = walk (contact, pass, contact, pass)
+function chibiGrid(look, dir, frame) {
+  const g = newGrid();
+  const hair = LOOKS.hairStyle[look.hairStyle], hat = LOOKS.hatStyle[look.hatStyle];
+  const b = frame === 2 || frame === 4 ? -1 : 0;              // body bobs up on passing frames
+  const stride = frame === 1 ? 1 : frame === 3 ? -1 : 0;       // +1: left leg forward
+  const side = dir === "right";
+
+  // ---------- long hair behind the body ----------
+  if (hair === "Long" && dir === "down") ell(g, 16, 16 + b, 9.5, 8, "R", (x, y) => y >= 10 + b && y <= 22 + b);
+  if (hair === "Long" && side) { rect(g, 7, 9 + b, 12, 20 + b, "R"); rect(g, 8, 21 + b, 11, 22 + b, "r"); }
+
+  // ---------- legs & shoes ----------
+  if (!side) {
+    const endL = 27 - (stride < 0 ? 1 : 0), endR = 27 - (stride > 0 ? 1 : 0);
+    rect(g, 12, 24, 14, endL, "O"); rect(g, 17, 24, 19, endR, "O");
+    rect(g, 11, endL + 1, 14, endL + 2, "B"); rect(g, 17, endR + 1, 20, endR + 2, "B");
+  } else {
+    const off = stride * 2;
+    const legs = [[13 - off, "o"], [16 + off, "O"]];          // far leg first, near leg on top
+    for (const [x0, ch] of legs) { rect(g, x0, 24, x0 + 2, 27, ch); rect(g, x0, 28, x0 + 3, 29, "B"); }
+  }
+
+  // ---------- torso, hips, arms ----------
+  const arm = -stride;                                          // arms swing opposite the legs
+  if (!side) {
+    rect(g, 11, 17 + b, 20, 22 + b, "C"); rect(g, 11, 22 + b, 20, 22 + b, "c");
+    rect(g, 12, 23 + b, 19, 25, "O");
+    if (dir === "down") { put(g, 15, 17 + b, "S"); put(g, 16, 17 + b, "S"); }
+    const aL = arm, aR = -arm;
+    rect(g, 9, 18 + b + aL, 10, 21 + b + aL, "c"); rect(g, 9, 22 + b + aL, 10, 23 + b + aL, "S");
+    rect(g, 21, 18 + b + aR, 22, 21 + b + aR, "c"); rect(g, 21, 22 + b + aR, 22, 23 + b + aR, "S");
+  } else {
+    rect(g, 12, 17 + b, 19, 22 + b, "C"); rect(g, 12, 22 + b, 19, 22 + b, "c");
+    rect(g, 12, 23 + b, 19, 25, "O");
+    const ax = 15 + arm * 2;
+    rect(g, ax, 18 + b, ax + 2, 21 + b, "c"); rect(g, ax, 22 + b, ax + 2, 23 + b, "S");
+  }
+
+  // ---------- head (big chibi head) ----------
+  ell(g, 16, 10.5 + b, 8, 7.5, "S");
+  if (dir === "down") {
+    rect(g, 11, 11 + b, 12, 13 + b, "E"); rect(g, 19, 11 + b, 20, 13 + b, "E");
+    put(g, 10, 14 + b, "p"); put(g, 21, 14 + b, "p");
+    put(g, 15, 15 + b, "M"); put(g, 16, 15 + b, "M");
+  } else if (side) {
+    rect(g, 20, 11 + b, 21, 13 + b, "E");
+    put(g, 19, 14 + b, "p"); put(g, 20, 14 + b, "p");
+    put(g, 22, 15 + b, "M");
+    put(g, 24, 12 + b, "S");                                    // little nose
+    rect(g, 13, 11 + b, 14, 13 + b, "s");                       // ear
+  }
+
+  // ---------- hair ----------
+  if (hair !== "Bald") {
+    if (dir === "down") {
+      ell(g, 16, 8.5 + b, 9.5, 7, "R", (x, y) => y <= 10 + b);                      // big top volume
+      for (let x = 8; x <= 23; x++) rect(g, x, 9 + b, x, 10 + b + ((x * 7) % 3 === 0 ? 1 : 0), "R");   // jagged bangs
+      const sideEnd = hair === "Long" ? 19 : 14;
+      rect(g, 6, 8 + b, 8, sideEnd + b, "R"); rect(g, 23, 8 + b, 25, sideEnd + b, "R");
+      put(g, 7, sideEnd + 1 + b, "R"); put(g, 24, sideEnd + 1 + b, "R");
+      rect(g, 10, 4 + b, 13, 4 + b, "h"); rect(g, 9, 5 + b, 10, 5 + b, "h"); rect(g, 19, 4 + b, 21, 4 + b, "h");   // shine
+    } else if (dir === "up") {
+      ell(g, 16, 10 + b, 9.5, 8.5, "R", (x, y) => y <= (hair === "Short" || hair === "Spiky" ? 16 : 15) + b);
+      if (hair === "Long") { rect(g, 7, 10 + b, 24, 21 + b, "R"); for (let x = 8; x <= 23; x += 2) put(g, x, 22 + b, "R"); }
+      rect(g, 11, 4 + b, 15, 4 + b, "h"); rect(g, 10, 5 + b, 11, 5 + b, "h");
+      for (const x of [13, 19]) rect(g, x, 10 + b, x, 14 + b, "r");
+    } else {
+      ell(g, 15, 8.5 + b, 9.5, 7, "R", (x, y) => y <= 10 + b);
+      rect(g, 6, 8 + b, 13, 15 + b, "R");                                            // back of the head
+      for (let x = 17; x <= 23; x++) rect(g, x, 9 + b, x, 10 + b + (x % 3 === 0 ? 1 : 0), "R");
+      rect(g, 9, 4 + b, 13, 4 + b, "h"); rect(g, 8, 5 + b, 9, 5 + b, "h");
+    }
+    if (hair === "Spiky" && hat === "None") {
+      const xs = side ? [7, 11, 15, 19] : [9, 13, 18, 22];
+      xs.forEach((sx, i) => spike(g, sx, 4 + b, 4 + (i % 2), side ? -2 : (i - 1.5), "R"));
+    }
+  }
+
+  // ---------- hats ----------
+  const top = (lim) => (x, y) => y <= lim + b;
+  if (hat === "Helmet") {
+    ell(g, side ? 15 : 16, 8 + b, 9.5, 7, "Y", top(8));
+    rect(g, 6, 8 + b, 25, 9 + b, "y");
+    if (dir === "down") { rect(g, 13, 2 + b, 18, 6 + b, "K"); rect(g, 14, 3 + b, 17, 5 + b, "L"); }
+    if (side) { rect(g, 21, 3 + b, 25, 7 + b, "K"); rect(g, 22, 4 + b, 24, 6 + b, "L"); }
+  } else if (hat === "Cap") {
+    ell(g, side ? 15 : 16, 8 + b, 9, 6.5, "Y", top(8));
+    if (dir === "down") ell(g, 16, 9.5 + b, 9.5, 2.2, "y", (x, y) => y >= 9 + b);
+    else if (side) rect(g, 19, 8 + b, 27, 9 + b, "y");
+    else rect(g, 8, 8 + b, 23, 8 + b, "y");
+    put(g, side ? 15 : 16, 1 + b, "y");
+  } else if (hat === "Beanie") {
+    ell(g, side ? 15 : 16, 8.5 + b, 9.5, 7.5, "Y", top(9));
+    rect(g, 6, 8 + b, 25, 10 + b, "y");
+    for (let x = 7; x <= 24; x += 2) rect(g, x, 8 + b, x, 10 + b, "Y");
+    ell(g, side ? 14 : 16, 1.5 + b, 2.6, 2.3, "W");
+  } else if (hat === "Cowboy") {
+    const cx = side ? 15 : 16;
+    rect(g, cx - 5, 1 + b, cx + 4, 7 + b, "Y"); put(g, cx - 1, 1 + b, "."); put(g, cx, 1 + b, ".");
+    rect(g, cx - 5, 6 + b, cx + 4, 7 + b, "y");
+    ell(g, cx, 8.5 + b, 15, 2.6, "Y");
+    rect(g, cx - 12, 9 + b, cx + 12, 9 + b, "y");
+  }
+  return g.map(r => r.join(""));
 }
-function headRows(look, dir) {
-  let rows = BASE_HEAD[dir];
-  rows = overlay(rows, HAIR[dir][LOOKS.hairStyle[look.hairStyle]]);
-  rows = overlay(rows, HATS[dir][LOOKS.hatStyle[look.hatStyle]]);
-  return rows;
-}
+
 const blush = skin => { const [r, g, b] = rgbOf(skin); return `rgb(${Math.min(255, r + 18)},${Math.round(g * 0.78)},${Math.round(b * 0.78)})`; };
 function lookPalette(look) {
   const c = (k) => LOOKS[k][look[k]][0];
   return {
     K: "#2a1814", E: "#2a1c30", L: "#fff6c0",
     S: c("skin"), s: shade(c("skin"), 0.8), p: blush(c("skin")),
-    R: c("hairColor"), r: shade(c("hairColor"), 0.75),
+    R: c("hairColor"), r: shade(c("hairColor"), 0.75), h: shade(c("hairColor"), 1.4),
     Y: c("hatColor"), y: shade(c("hatColor"), 0.72),
     C: c("shirt"), c: shade(c("shirt"), 0.72),
     O: c("pants"), o: shade(c("pants"), 0.75),
-    B: c("shoes"),
+    B: c("shoes"), M: "#9a4a46", W: "#f4f0e8",
   };
 }
 
@@ -931,7 +966,7 @@ function mkCanvas(w, h) { const c = document.createElement("canvas"); c.width = 
 const K = 4 / 3;         // world units → device pixels (48-unit tile = 64 device px = 64 art pixels)
 const HD_PX = 2;         // device pixels per art pixel (crisp 32x32 sprites shown at 2x, GBA-style)
 const UPSCALE_PASSES = 1; // 16 → 32
-const OPAQUE_NO_SHADE = new Set(["K", "E", "L", "."]);
+const OPAQUE_NO_SHADE = new Set(["K", "E", "L", "M", "."]);
 function scale2x(grid) {
   const h = grid.length, w = grid[0].length, at = (x, y) => (y < 0 || y >= h || x < 0 || x >= w) ? "." : grid[y][x];
   const out = Array.from({ length: h * 2 }, () => new Array(w * 2));
@@ -998,7 +1033,7 @@ function seloutColor(base, f, t = 0.4) {
 function paint(rows, pal, opts = {}) {
   const w = Math.max(...rows.map(r => r.length));
   let g = rows.map(r => [...r.padEnd(w, ".")]);
-  for (let i = 0; i < UPSCALE_PASSES; i++) g = scale2x(g);
+  for (let i = 0; i < (opts.passes ?? UPSCALE_PASSES); i++) g = scale2x(g);
   if (!opts.rawOutline) g = reoutline(g);
   const h2 = g.length, w2 = g[0].length, at = (x, y) => (y < 0 || y >= h2 || x < 0 || x >= w2) ? "." : g[y][x];
   const edge = c => c === "." || c === "K";
@@ -1044,24 +1079,15 @@ const spriteCache = {};
 function lookSprites(look) {
   const key = JSON.stringify(look);
   if (spriteCache[key]) return spriteCache[key];
-  const pal = lookPalette(look);
-  const front = [...headRows(look, "down").slice(0, 9), ...BODY_FRONT];
-  const back = [...headRows(look, "up").slice(0, 9), ...BODY_BACK];
-  const side = [...headRows(look, "right").slice(0, 9), ...SIDE_BODY];
-  // Long hair hangs past the head, so lay rows 9–10 of the hair over the body too.
-  const withHair = (rows, dir) => overlay(rows, Object.fromEntries(
-    Object.entries(HAIR[dir][LOOKS.hairStyle[look.hairStyle]]).filter(([y]) => y >= 9)));
-  const set = {
-    down:  { stand: [...front, ...LEGS_STAND], walk: [[...front, ...LEGS_WALK], [...front, ...mirror(LEGS_WALK)]] },
-    up:    { stand: [...back, ...LEGS_STAND],  walk: [[...back, ...LEGS_WALK],  [...back, ...mirror(LEGS_WALK)]] },
-    right: { stand: [...side, ...SIDE_STAND],  walk: [[...side, ...SIDE_WALK],  [...side, ...SIDE_STAND]] },
-  };
-  for (const d in set) { set[d].stand = withHair(set[d].stand, d); set[d].walk = set[d].walk.map(f => withHair(f, d)); }
-  set.left = { stand: mirror(set.right.stand), walk: set.right.walk.map(mirror) };
-  const out = {};
-  for (const d in set) out[d] = { stand: paint(set[d].stand, pal), walk: set[d].walk.map(f => paint(f, pal)) };
+  const pal = lookPalette(look), out = {};
+  for (const dir of ["down", "up", "right"]) {
+    const frames = [0, 1, 2, 3, 4].map(f => chibiGrid(look, dir, f));
+    out[dir] = { stand: paint(frames[0], pal, { passes: 0 }), walk: frames.slice(1).map(f => paint(f, pal, { passes: 0 })) };
+    if (dir === "right") out.left = { stand: paint(mirror32(frames[0]), pal, { passes: 0 }), walk: frames.slice(1).map(f => paint(mirror32(f), pal, { passes: 0 })) };
+  }
   return (spriteCache[key] = out);
 }
+const mirror32 = rows => rows.map(r => [...r].reverse().join(""));
 function playerSprites(seat) { return lookSprites(cleanLook(state.players[seat].look, seat)); }
 
 const pickCache = {};
@@ -1379,9 +1405,8 @@ function drawPlayer(seat, now) {
   const present = seat === net.seat || net.connected;
   const moving = Math.abs(d.x - p.x) + Math.abs(d.y - p.y) > 0.02;
   const set = playerSprites(seat)[p.dir || "down"];
-  const step = Math.floor(now / 130) % 2;
-  const img = moving ? set.walk[step] : set.stand;
-  const x = d.x * TS, y = d.y * TS - 6 - (moving && step ? S : 0);
+  const img = moving ? set.walk[Math.floor(now / 110) % 4] : set.stand;
+  const x = d.x * TS, y = d.y * TS - 6;
   const sw = now - swing[seat];
   ctx.globalAlpha = present ? 1 : 0.35;
   ctx.fillStyle = "#00000055"; ctx.beginPath(); ctx.ellipse(x + TS / 2, d.y * TS + TS - 4, 15, 5, 0, 0, Math.PI * 2); ctx.fill();
