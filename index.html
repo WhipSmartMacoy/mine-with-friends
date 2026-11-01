@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Mine with friends</title>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <style>
   :root {
     --bg: #1b1712; --panel: #2a241c; --panel2: #352d23; --line: #4a3f31;
@@ -19,16 +20,42 @@
   h1 { margin: 0; font-size: 2.2rem; letter-spacing: 1px; color: var(--gold); text-shadow: 0 3px 0 #6b4f12; }
   header p { margin: 4px 0 0; color: var(--muted); }
   main { max-width: 1150px; margin: 0 auto; padding: 12px; }
-  .players { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .hidden { display: none !important; }
   .card { background: var(--panel); border: 2px solid var(--line); border-radius: 12px; padding: 14px; }
+  button { font-family: inherit; cursor: pointer; border-radius: 8px; border: 2px solid var(--line);
+           background: #4b3e2c; color: var(--text); padding: 7px 12px; font-weight: bold; }
+  button:hover:not(:disabled) { filter: brightness(1.15); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  .btn-gold { background: var(--gold); color: #2a1d05; border-color: #b68a22; }
+  input.field { font-family: inherit; font-size: 1rem; padding: 9px 10px; border-radius: 8px; border: 2px solid var(--line);
+                background: #1f1a14; color: var(--text); width: 100%; }
+
+  /* Lobby */
+  .lobby { max-width: 520px; margin: 20px auto; }
+  .lobby h2 { margin: 0 0 12px; }
+  .lobby label { display: block; color: var(--muted); font-size: .85rem; margin: 10px 0 4px; }
+  .lobby .row { display: flex; gap: 8px; }
+  .lobby .row button { white-space: nowrap; }
+  .or { text-align: center; color: var(--muted); margin: 14px 0 4px; font-size: .85rem; }
+  .code-input { text-transform: uppercase; letter-spacing: 4px; font-weight: bold; }
+  .lobby-msg { margin-top: 12px; min-height: 22px; text-align: center; }
+  .lobby-msg.bad { color: var(--bad); }
+
+  /* Connection bar */
+  .connbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px;
+             margin-bottom: 12px; padding: 10px 14px; }
+  .code { font-size: 1.3rem; letter-spacing: 4px; color: var(--gold); font-weight: bold; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--bad); margin-right: 6px; }
+  .dot.on { background: var(--good); }
+
+  .players { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .player { transition: border-color .2s, box-shadow .2s, opacity .2s; opacity: .7; }
   .player.active { opacity: 1; }
   .player.p1.active { border-color: var(--p1); box-shadow: 0 0 18px #5fb3e655; }
   .player.p2.active { border-color: var(--p2); box-shadow: 0 0 18px #e68a5f55; }
   .phead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  .pname { font-size: 1.3rem; font-weight: bold; background: none; border: none; color: inherit;
-           font-family: inherit; width: 60%; border-bottom: 1px dashed transparent; }
-  .pname:hover, .pname:focus { border-bottom-color: var(--muted); outline: none; }
+  .pname { font-size: 1.3rem; font-weight: bold; }
+  .pname small { font-size: .75rem; color: var(--muted); font-weight: normal; margin-left: 6px; }
   .p1 .pname { color: var(--p1); } .p2 .pname { color: var(--p2); }
   .turn-badge { font-size: .8rem; padding: 3px 8px; border-radius: 99px; background: var(--gold); color: #2a1d05; font-weight: bold; visibility: hidden; }
   .player.active .turn-badge { visibility: visible; }
@@ -40,11 +67,6 @@
   .bar > i { display: block; height: 100%; background: var(--gold); width: 0; transition: width .4s; }
   .pick { display: flex; align-items: center; justify-content: space-between; gap: 8px; background: var(--panel2); border-radius: 8px; padding: 8px; }
   .pick .info small { color: var(--muted); display: block; }
-  button { font-family: inherit; cursor: pointer; border-radius: 8px; border: 2px solid var(--line);
-           background: #4b3e2c; color: var(--text); padding: 7px 12px; font-weight: bold; }
-  button:hover:not(:disabled) { filter: brightness(1.15); }
-  button:disabled { opacity: .4; cursor: not-allowed; }
-  .btn-gold { background: var(--gold); color: #2a1d05; border-color: #b68a22; }
   .inv { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; min-height: 26px; }
   .chip { font-size: .75rem; padding: 2px 7px; border-radius: 99px; background: #00000040; border: 1px solid var(--line); }
 
@@ -53,7 +75,7 @@
   .mine-title h2 { margin: 0 0 8px; font-size: 1.2rem; }
   .mine-title span { color: var(--muted); font-size: .9rem; }
   .rocks { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
-  .rock { padding: 10px 6px; text-align: center; border-radius: 10px; background: var(--panel2); border: 2px solid var(--line); position: relative; }
+  .rock { padding: 10px 6px; text-align: center; border-radius: 10px; background: var(--panel2); border: 2px solid var(--line); }
   .rock .gem { width: 38px; height: 34px; margin: 0 auto 4px; border-radius: 40% 55% 45% 50%;
                box-shadow: inset -6px -6px 0 #00000055, inset 4px 4px 0 #ffffff33; }
   .rock .rn { font-size: .85rem; font-weight: bold; display: block; }
@@ -82,81 +104,113 @@
 <body>
 <header>
   <h1>⛏️ Mine with friends</h1>
-  <p>Take turns picking a rock to mine. Higher-level rocks pay more but break your luck more often.</p>
+  <p>Take turns picking a rock to mine. Higher-level rocks pay more but fail more often.</p>
 </header>
 
 <main>
-  <section class="players">
-    <div class="card player p1" id="player-0"></div>
-    <div class="card player p2" id="player-1"></div>
+  <!-- ===== Lobby ===== -->
+  <section id="lobby" class="card lobby">
+    <h2>Lobby</h2>
+    <label for="my-name">Your name</label>
+    <input id="my-name" class="field" maxlength="16" placeholder="e.g. Steve">
+
+    <label>Start a new game, or reopen your last one</label>
+    <div class="row">
+      <button class="btn-gold" id="create-btn" style="flex:1">Create lobby</button>
+      <button id="reopen-btn" class="hidden" style="flex:1"></button>
+    </div>
+
+    <div class="or">— or join a friend —</div>
+    <div class="row">
+      <input id="join-code" class="field code-input" maxlength="5" placeholder="CODE">
+      <button id="join-btn">Join lobby</button>
+    </div>
+    <div class="lobby-msg" id="lobby-msg"></div>
   </section>
 
-  <section class="center">
-    <div class="card">
-      <div class="mine-title">
-        <h2 id="turn-label">Choose a rock</h2>
-        <span>Turn <b id="turn-num">1</b></span>
+  <!-- ===== Game ===== -->
+  <section id="game" class="hidden">
+    <div class="card connbar">
+      <div>Lobby code: <span class="code" id="code-label"></span>
+        <button id="copy-btn" style="margin-left:8px;font-size:.75rem;padding:4px 9px">Copy invite link</button></div>
+      <div><span class="dot" id="conn-dot"></span><span id="conn-label"></span></div>
+      <button id="leave-btn">Leave lobby</button>
+    </div>
+
+    <div class="players">
+      <div class="card player p1" id="player-0"></div>
+      <div class="card player p2" id="player-1"></div>
+    </div>
+
+    <div class="center">
+      <div class="card">
+        <div class="mine-title">
+          <h2 id="turn-label">Choose a rock</h2>
+          <span>Turn <b id="turn-num">1</b></span>
+        </div>
+        <div class="rocks" id="rocks"></div>
+        <div class="result" id="result">Waiting for both players…</div>
       </div>
-      <div class="rocks" id="rocks"></div>
-      <div class="result" id="result">Pick a rock to start mining.</div>
+      <div class="card total">
+        <h2 style="margin:0 0 6px;font-size:1.2rem">🤝 Team progress</h2>
+        <div class="stats" id="team-stats"></div>
+        <div class="milestones" id="milestones"></div>
+        <h3 style="margin:12px 0 4px;font-size:1rem">Mining log</h3>
+        <div class="log" id="log"></div>
+      </div>
     </div>
-    <div class="card total">
-      <h2 style="margin:0 0 6px;font-size:1.2rem">🤝 Team progress</h2>
-      <div class="stats" id="team-stats"></div>
-      <div class="milestones" id="milestones"></div>
-      <h3 style="margin:12px 0 4px;font-size:1rem">Mining log</h3>
-      <div class="log" id="log"></div>
-    </div>
+
+    <footer>
+      Progress saves automatically on both players' browsers.
+      <button id="export">Export save</button>
+      <button id="import" class="host-only">Import save</button>
+      <button id="reset" class="host-only">Reset game</button>
+    </footer>
   </section>
 </main>
 
-<footer>
-  Progress saves automatically in this browser.
-  <button id="export">Export save</button>
-  <button id="import">Import save</button>
-  <button id="reset">Reset game</button>
-</footer>
-
 <script>
-// ---------- Game data ----------
+// ================= Game data =================
 const ROCKS = [
-  { name: "Stone",     color: "#8a8a8a", value: 2,   xp: 2 },
-  { name: "Coal",      color: "#2e2e2e", value: 4,   xp: 4 },
-  { name: "Copper",    color: "#c4733b", value: 7,   xp: 6 },
-  { name: "Iron",      color: "#b9a99a", value: 12,  xp: 9 },
-  { name: "Silver",    color: "#d8dde3", value: 20,  xp: 13 },
-  { name: "Gold",      color: "#f2c14e", value: 32,  xp: 18 },
-  { name: "Emerald",   color: "#3fbf6f", value: 50,  xp: 25 },
-  { name: "Ruby",      color: "#d6334a", value: 78,  xp: 34 },
-  { name: "Diamond",   color: "#8fe6f2", value: 120, xp: 46 },
-  { name: "Mythril",   color: "#a77bf2", value: 190, xp: 62 },
+  { name: "Stone",   color: "#8a8a8a", value: 2,   xp: 2 },
+  { name: "Coal",    color: "#2e2e2e", value: 4,   xp: 4 },
+  { name: "Copper",  color: "#c4733b", value: 7,   xp: 6 },
+  { name: "Iron",    color: "#b9a99a", value: 12,  xp: 9 },
+  { name: "Silver",  color: "#d8dde3", value: 20,  xp: 13 },
+  { name: "Gold",    color: "#f2c14e", value: 32,  xp: 18 },
+  { name: "Emerald", color: "#3fbf6f", value: 50,  xp: 25 },
+  { name: "Ruby",    color: "#d6334a", value: 78,  xp: 34 },
+  { name: "Diamond", color: "#8fe6f2", value: 120, xp: 46 },
+  { name: "Mythril", color: "#a77bf2", value: 190, xp: 62 },
 ].map((r, i) => ({ ...r, level: i + 1 }));
 
 const PICKAXES = [
-  { name: "Wooden",   power: 1,  cost: 0 },
-  { name: "Stone",    power: 2,  cost: 25 },
-  { name: "Copper",   power: 3,  cost: 60 },
-  { name: "Iron",     power: 4,  cost: 130 },
-  { name: "Silver",   power: 5,  cost: 260 },
-  { name: "Gold",     power: 6,  cost: 480 },
-  { name: "Emerald",  power: 7,  cost: 850 },
-  { name: "Ruby",     power: 8,  cost: 1400 },
-  { name: "Diamond",  power: 9,  cost: 2300 },
-  { name: "Mythril",  power: 10, cost: 3800 },
+  { name: "Wooden",  power: 1,  cost: 0 },
+  { name: "Stone",   power: 2,  cost: 25 },
+  { name: "Copper",  power: 3,  cost: 60 },
+  { name: "Iron",    power: 4,  cost: 130 },
+  { name: "Silver",  power: 5,  cost: 260 },
+  { name: "Gold",    power: 6,  cost: 480 },
+  { name: "Emerald", power: 7,  cost: 850 },
+  { name: "Ruby",    power: 8,  cost: 1400 },
+  { name: "Diamond", power: 9,  cost: 2300 },
+  { name: "Mythril", power: 10, cost: 3800 },
 ];
 
 const MILESTONES = [
-  { label: "Mine 25 rocks together",       test: t => t.mined >= 25 },
-  { label: "Earn 500 gold together",       test: t => t.goldEarned >= 500 },
-  { label: "Both reach Miner level 5",     test: (t, p) => p.every(x => x.level >= 5) },
-  { label: "Mine a Diamond",               test: t => (t.ores.Diamond || 0) > 0 },
-  { label: "Mine every type of rock",      test: t => ROCKS.every(r => (t.ores[r.name] || 0) > 0) },
-  { label: "Both own a Mythril pickaxe",   test: (t, p) => p.every(x => x.pick >= 9) },
+  { label: "Mine 25 rocks together",     test: t => t.mined >= 25 },
+  { label: "Earn 500 gold together",     test: t => t.goldEarned >= 500 },
+  { label: "Both reach Miner level 5",   test: (t, p) => p.every(x => x.level >= 5) },
+  { label: "Mine a Diamond",             test: t => (t.ores.Diamond || 0) > 0 },
+  { label: "Mine every type of rock",    test: t => ROCKS.every(r => (t.ores[r.name] || 0) > 0) },
+  { label: "Both own a Mythril pickaxe", test: (t, p) => p.every(x => x.pick >= 9) },
 ];
 
-const SAVE_KEY = "mine-with-friends-save-v1";
+const PEER_PREFIX = "mine-with-friends-";
+const PREFS_KEY = "mwf-prefs";
+const saveKey = code => "mwf-lobby-" + code;
 
-// ---------- State ----------
+// ================= State =================
 function newPlayer(name) {
   return { name, gold: 0, xp: 0, level: 1, pick: 0, mined: 0, fails: 0, streak: 0, ores: {} };
 }
@@ -168,83 +222,67 @@ function newGame() {
     log: [],
   };
 }
-let state = load() || newGame();
 
-function load() {
-  try { const s = JSON.parse(localStorage.getItem(SAVE_KEY)); return s && s.players ? s : null; }
-  catch { return null; }
-}
-function save() {
-  try { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); } catch {}
-}
+let state = newGame();
+let net = { peer: null, conn: null, isHost: false, seat: 0, code: "", connected: false };
 
-// ---------- Rules ----------
+const readJSON = k => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } };
+const writeJSON = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+const progress = s => s && s.team ? s.team.mined + s.team.fails : -1;
+
+function save() { if (net.code) writeJSON(saveKey(net.code), state); }
+
+// ================= Rules (run by the host only) =================
 const xpForLevel = lvl => Math.round(20 * Math.pow(lvl, 1.5));
-
-// Highest rock a player can attempt: limited by miner level and pickaxe.
 function maxRock(p) { return Math.min(10, Math.max(1, Math.min(p.level, PICKAXES[p.pick].power + 1))); }
-
-// Success chance: pickaxe power vs rock level.
 function successChance(p, rock) {
-  const power = PICKAXES[p.pick].power;
-  const diff = power - rock.level;           // positive = pickaxe stronger than rock
-  let c = 0.7 + diff * 0.08 + Math.min(p.streak, 5) * 0.01;
+  const diff = PICKAXES[p.pick].power - rock.level;
+  const c = 0.7 + diff * 0.08 + Math.min(p.streak, 5) * 0.01;
   return Math.max(0.15, Math.min(0.95, c));
 }
 
-function mine(rockIdx) {
-  const p = state.players[state.current];
-  const rock = ROCKS[rockIdx];
-  if (rock.level > maxRock(p)) return;
+// Applies an action for a seat. Returns a result object, or null if the action isn't allowed.
+function applyAction(seat, action) {
+  if (seat !== state.current) return null;
+  const p = state.players[seat];
 
-  const chance = successChance(p, rock);
-  const ok = Math.random() < chance;
-  const res = document.getElementById("result");
-  let msg;
-
-  if (ok) {
-    const bonus = Math.random() < 0.1 ? 2 : 1;      // 10% chance of a double haul
-    const gold = rock.value * bonus;
-    p.gold += gold; p.xp += rock.xp; p.mined++; p.streak++;
-    p.ores[rock.name] = (p.ores[rock.name] || 0) + bonus;
-    state.team.mined++; state.team.goldEarned += gold;
-    state.team.ores[rock.name] = (state.team.ores[rock.name] || 0) + bonus;
-    msg = `${p.name} mined ${bonus > 1 ? "a DOUBLE haul of " : ""}${rock.name}! +${gold} gold, +${rock.xp} XP`;
-    let leveled = false;
-    while (p.xp >= xpForLevel(p.level) && p.level < 10) { p.xp -= xpForLevel(p.level); p.level++; leveled = true; }
-    if (leveled) msg += ` — reached Miner level ${p.level}!`;
-    res.className = "result good";
-  } else {
-    p.fails++; p.streak = 0; state.team.fails++;
-    const consolation = Math.max(1, Math.floor(rock.xp / 4));
-    p.xp += consolation;
-    msg = `${p.name} swung at ${rock.name}… and it didn't break. (+${consolation} XP for trying)`;
-    res.className = "result bad";
-    const el = document.querySelector(`[data-rock="${rockIdx}"]`);
-    if (el) { el.classList.remove("shake"); void el.offsetWidth; el.classList.add("shake"); }
+  if (action.type === "mine") {
+    const rock = ROCKS[action.rock];
+    if (!rock || rock.level > maxRock(p)) return null;
+    const ok = Math.random() < successChance(p, rock);
+    let text;
+    if (ok) {
+      const bonus = Math.random() < 0.1 ? 2 : 1;
+      const gold = rock.value * bonus;
+      p.gold += gold; p.xp += rock.xp; p.mined++; p.streak++;
+      p.ores[rock.name] = (p.ores[rock.name] || 0) + bonus;
+      state.team.mined++; state.team.goldEarned += gold;
+      state.team.ores[rock.name] = (state.team.ores[rock.name] || 0) + bonus;
+      text = `${p.name} mined ${bonus > 1 ? "a DOUBLE haul of " : ""}${rock.name}! +${gold} gold, +${rock.xp} XP`;
+      let leveled = false;
+      while (p.level < 10 && p.xp >= xpForLevel(p.level)) { p.xp -= xpForLevel(p.level); p.level++; leveled = true; }
+      if (leveled) text += ` — reached Miner level ${p.level}!`;
+    } else {
+      p.fails++; p.streak = 0; state.team.fails++;
+      const consolation = Math.max(1, Math.floor(rock.xp / 4));
+      p.xp += consolation;
+      text = `${p.name} swung at ${rock.name}… and it didn't break. (+${consolation} XP for trying)`;
+    }
+    addLog(text, ok);
+    state.current = 1 - state.current;
+    if (state.current === 0) state.turn++;
+    return { text, ok, rock: action.rock };
   }
-  res.textContent = msg;
-  addLog(msg, ok);
-  endTurn();
-}
 
-function upgrade(i) {
-  const p = state.players[i];
-  if (i !== state.current) return;
-  const next = PICKAXES[p.pick + 1];
-  if (!next || p.gold < next.cost) return;
-  p.gold -= next.cost; p.pick++;
-  const msg = `${p.name} upgraded to a ${next.name} pickaxe!`;
-  addLog(msg, true);
-  const res = document.getElementById("result");
-  res.className = "result good"; res.textContent = msg + " (Upgrading doesn't use your turn.)";
-  save(); render();
-}
-
-function endTurn() {
-  state.current = 1 - state.current;
-  if (state.current === 0) state.turn++;
-  save(); render();
+  if (action.type === "upgrade") {
+    const next = PICKAXES[p.pick + 1];
+    if (!next || p.gold < next.cost) return null;
+    p.gold -= next.cost; p.pick++;
+    const text = `${p.name} upgraded to a ${next.name} pickaxe!`;
+    addLog(text, true);
+    return { text: text + " (Upgrading doesn't use your turn.)", ok: true };
+  }
+  return null;
 }
 
 function addLog(text, ok) {
@@ -252,7 +290,180 @@ function addLog(text, ok) {
   state.log = state.log.slice(0, 60);
 }
 
-// ---------- Rendering ----------
+// ================= Networking =================
+function genCode() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  return Array.from({ length: 5 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+}
+
+function lobbyMsg(text, bad) {
+  const el = document.getElementById("lobby-msg");
+  el.textContent = text; el.className = "lobby-msg" + (bad ? " bad" : "");
+}
+
+function myName() {
+  const n = document.getElementById("my-name").value.trim();
+  return n || null;
+}
+
+function teardown() {
+  try { net.conn && net.conn.close(); } catch {}
+  try { net.peer && net.peer.destroy(); } catch {}
+  net = { peer: null, conn: null, isHost: false, seat: 0, code: "", connected: false };
+}
+
+function hostLobby(code) {
+  const name = myName();
+  if (!name) return lobbyMsg("Enter your name first.", true);
+  if (typeof Peer === "undefined") return lobbyMsg("Couldn't load the multiplayer library. Check your connection.", true);
+  teardown();
+  lobbyMsg("Opening lobby…");
+  const reopening = !!code;
+  code = code || genCode();
+  const peer = new Peer(PEER_PREFIX + code);
+  net.peer = peer;
+
+  peer.on("open", () => {
+    net.isHost = true; net.seat = 0; net.code = code;
+    state = readJSON(saveKey(code)) || newGame();
+    state.players[0].name = name;
+    writeJSON(PREFS_KEY, { name, lastCode: code, lastRole: "host" });
+    save(); enterGame();
+  });
+
+  peer.on("connection", c => {
+    // Only one guest allowed: anyone else gets told the lobby is full.
+    if (net.conn && net.conn.open) {
+      c.on("open", () => { c.send({ type: "full" }); setTimeout(() => c.close(), 300); });
+      return;
+    }
+    net.conn = c;
+    c.on("data", msg => onHostData(c, msg));
+    c.on("close", () => { if (net.conn === c) { net.conn = null; setConnected(false); } });
+  });
+
+  peer.on("error", err => {
+    if (err.type === "unavailable-id") {
+      if (reopening) return lobbyMsg(`Lobby ${code} is already open somewhere else.`, true);
+      return hostLobby(); // code collision: try another
+    }
+    if (!net.code) lobbyMsg("Couldn't open a lobby: " + err.type, true);
+  });
+  peer.on("disconnected", () => { try { peer.reconnect(); } catch {} });
+}
+
+function onHostData(c, msg) {
+  if (msg.type === "hello") {
+    // If the guest has a more advanced save for this lobby, use it.
+    if (progress(msg.saved) > progress(state)) state = msg.saved;
+    state.players[0].name = myName() || state.players[0].name;
+    state.players[1].name = String(msg.name || "Player 2").slice(0, 16);
+    save(); setConnected(true);
+    broadcast({ text: `${state.players[1].name} joined the lobby!`, ok: true });
+  } else if (msg.type === "action") {
+    const result = applyAction(1, msg.action);
+    if (result) { save(); broadcast(result); }
+  }
+}
+
+function broadcast(result) {
+  if (net.conn && net.conn.open) net.conn.send({ type: "state", state, result });
+  render(); showResult(result);
+}
+
+function joinLobby(code) {
+  const name = myName();
+  if (!name) return lobbyMsg("Enter your name first.", true);
+  code = (code || "").trim().toUpperCase();
+  if (code.length !== 5) return lobbyMsg("Lobby codes are 5 characters.", true);
+  if (typeof Peer === "undefined") return lobbyMsg("Couldn't load the multiplayer library. Check your connection.", true);
+  teardown();
+  lobbyMsg("Joining " + code + "…");
+  const peer = new Peer();
+  net.peer = peer;
+
+  peer.on("open", () => {
+    const c = peer.connect(PEER_PREFIX + code, { reliable: true });
+    net.conn = c;
+    c.on("open", () => c.send({ type: "hello", name, saved: readJSON(saveKey(code)) }));
+    c.on("data", msg => {
+      if (msg.type === "full") { teardown(); showLobby(); return lobbyMsg("That lobby is full (2 players max).", true); }
+      if (msg.type === "state") {
+        const first = !net.code;
+        net.isHost = false; net.seat = 1; net.code = code;
+        state = msg.state; save();
+        if (first) { writeJSON(PREFS_KEY, { name, lastCode: code, lastRole: "guest" }); enterGame(); }
+        setConnected(true); render(); showResult(msg.result);
+      }
+    });
+    c.on("close", () => {
+      setConnected(false);
+      if (net.code) showResult({ text: "The host left. Your progress is saved — rejoin when they reopen the lobby.", ok: false });
+    });
+  });
+  peer.on("error", err => {
+    if (err.type === "peer-unavailable") { teardown(); showLobby(); lobbyMsg(`No open lobby with code ${code}.`, true); }
+    else if (!net.code) lobbyMsg("Couldn't join: " + err.type, true);
+  });
+}
+
+function sendAction(action) {
+  if (!net.connected || state.current !== net.seat) return;
+  if (net.isHost) {
+    const result = applyAction(0, action);
+    if (result) { save(); broadcast(result); }
+  } else if (net.conn && net.conn.open) {
+    net.conn.send({ type: "action", action });
+  }
+}
+
+// ================= Rendering =================
+function showLobby() {
+  document.getElementById("lobby").classList.remove("hidden");
+  document.getElementById("game").classList.add("hidden");
+  const prefs = readJSON(PREFS_KEY) || {};
+  if (prefs.name) document.getElementById("my-name").value = prefs.name;
+  const reopen = document.getElementById("reopen-btn");
+  if (prefs.lastCode && prefs.lastRole === "host") {
+    reopen.textContent = `Reopen lobby ${prefs.lastCode}`;
+    reopen.dataset.code = prefs.lastCode;
+    reopen.classList.remove("hidden");
+  } else reopen.classList.add("hidden");
+  const fromUrl = new URLSearchParams(location.search).get("join");
+  const lastGuest = prefs.lastRole === "guest" ? prefs.lastCode : "";
+  document.getElementById("join-code").value = (fromUrl || lastGuest || "").toUpperCase();
+}
+
+function enterGame() {
+  document.getElementById("lobby").classList.add("hidden");
+  document.getElementById("game").classList.remove("hidden");
+  document.getElementById("code-label").textContent = net.code;
+  document.querySelectorAll(".host-only").forEach(b => b.classList.toggle("hidden", !net.isHost));
+  lobbyMsg("");
+  setConnected(net.connected);
+}
+
+function setConnected(on) {
+  net.connected = on;
+  document.getElementById("conn-dot").classList.toggle("on", on);
+  document.getElementById("conn-label").textContent = on
+    ? "Both players connected"
+    : net.isHost ? "Waiting for your friend to join…" : "Disconnected";
+  if (!on && net.isHost) showResult({ text: `Share code ${net.code} with your friend to start.`, ok: true, neutral: true });
+  render();
+}
+
+function showResult(r) {
+  if (!r) return;
+  const res = document.getElementById("result");
+  res.className = "result" + (r.neutral ? "" : r.ok ? " good" : " bad");
+  res.textContent = r.text;
+  if (r.ok === false && r.rock !== undefined) {
+    const el = document.querySelector(`[data-rock="${r.rock}"]`);
+    if (el) { el.classList.remove("shake"); void el.offsetWidth; el.classList.add("shake"); }
+  }
+}
+
 function renderPlayer(i) {
   const p = state.players[i];
   const el = document.getElementById("player-" + i);
@@ -260,13 +471,16 @@ function renderPlayer(i) {
   const pick = PICKAXES[p.pick], next = PICKAXES[p.pick + 1];
   const need = xpForLevel(p.level);
   const pct = p.level >= 10 ? 100 : Math.min(100, (p.xp / need) * 100);
+  const mine = i === net.seat;
+  const canUpgrade = mine && net.connected && state.current === i && next && p.gold >= next.cost;
   const ores = ROCKS.filter(r => p.ores[r.name]).map(r =>
     `<span class="chip" style="border-color:${r.color}">${r.name} ×${p.ores[r.name]}</span>`).join("")
     || `<span class="chip">No ores yet</span>`;
+  const waiting = i === 1 && net.isHost && !net.connected;
   el.innerHTML = `
     <div class="phead">
-      <input class="pname" value="${escapeHtml(p.name)}" maxlength="16" aria-label="Player name" data-name="${i}">
-      <span class="turn-badge">YOUR TURN</span>
+      <span class="pname">${escapeHtml(waiting ? "Waiting for player…" : p.name)}<small>${mine ? "(you)" : ""}${i === 0 ? " · host" : ""}</small></span>
+      <span class="turn-badge">${mine ? "YOUR TURN" : "THEIR TURN"}</span>
     </div>
     <div class="stats">
       <div class="stat"><small>Gold</small><b>🪙 ${p.gold}</b></div>
@@ -276,22 +490,24 @@ function renderPlayer(i) {
     </div>
     <div class="pick">
       <div class="info"><b>⛏️ ${pick.name} pickaxe</b><small>Power ${pick.power} · can reach rock lvl ${maxRock(p)}</small></div>
-      ${next ? `<button class="btn-gold" data-up="${i}" ${state.current !== i || p.gold < next.cost ? "disabled" : ""}>
-                 Upgrade to ${next.name} · ${next.cost}🪙</button>`
-             : `<span class="chip">Max pickaxe</span>`}
+      ${!next ? `<span class="chip">Max pickaxe</span>`
+        : mine ? `<button class="btn-gold" data-up ${canUpgrade ? "" : "disabled"}>Upgrade to ${next.name} · ${next.cost}🪙</button>`
+        : `<span class="chip">Next: ${next.name} · ${next.cost}🪙</span>`}
     </div>
     <div class="inv">${ores}</div>`;
 }
 
 function renderRocks() {
   const p = state.players[state.current];
+  const myTurn = net.connected && state.current === net.seat;
   const limit = maxRock(p);
-  document.getElementById("turn-label").textContent = `${p.name}, choose a rock`;
+  document.getElementById("turn-label").textContent = !net.connected ? "Waiting for both players"
+    : myTurn ? "Your turn — choose a rock" : `${p.name} is choosing a rock…`;
   document.getElementById("turn-num").textContent = state.turn;
   document.getElementById("rocks").innerHTML = ROCKS.map((r, i) => {
     const locked = r.level > limit;
     const why = r.level > p.level ? `Need miner lvl ${r.level}` : `Need better pickaxe`;
-    return `<button class="rock ${locked ? "locked" : ""}" data-rock="${i}" ${locked ? "disabled" : ""}>
+    return `<button class="rock ${locked ? "locked" : ""}" data-rock="${i}" ${locked || !myTurn ? "disabled" : ""}>
       <div class="gem" style="background:${r.color}"></div>
       <span class="rn">${r.name}</span><span class="rl">Level ${r.level} · ${r.value}🪙</span>
       <span class="rc">${locked ? "🔒 " + why : Math.round(successChance(p, r) * 100) + "% success"}</span>
@@ -324,39 +540,48 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
-// ---------- Events ----------
+// ================= Events =================
 document.addEventListener("click", e => {
   const rock = e.target.closest("[data-rock]");
-  if (rock && !rock.disabled) return mine(+rock.dataset.rock);
+  if (rock && !rock.disabled) return sendAction({ type: "mine", rock: +rock.dataset.rock });
   const up = e.target.closest("[data-up]");
-  if (up && !up.disabled) return upgrade(+up.dataset.up);
+  if (up && !up.disabled) return sendAction({ type: "upgrade" });
 });
-document.addEventListener("change", e => {
-  if (e.target.dataset.name !== undefined) {
-    const i = +e.target.dataset.name;
-    state.players[i].name = e.target.value.trim() || `Player ${i + 1}`;
-    save(); render();
-  }
-});
+document.getElementById("create-btn").onclick = () => hostLobby();
+document.getElementById("reopen-btn").onclick = e => hostLobby(e.target.dataset.code);
+document.getElementById("join-btn").onclick = () => joinLobby(document.getElementById("join-code").value);
+document.getElementById("join-code").addEventListener("keydown", e => { if (e.key === "Enter") document.getElementById("join-btn").click(); });
+document.getElementById("leave-btn").onclick = () => { save(); teardown(); showLobby(); };
+document.getElementById("copy-btn").onclick = async e => {
+  const url = location.origin + location.pathname + "?join=" + net.code;
+  try { await navigator.clipboard.writeText(url); e.target.textContent = "Copied!"; }
+  catch { prompt("Send this link to your friend:", url); }
+  setTimeout(() => (e.target.textContent = "Copy invite link"), 1500);
+};
 document.getElementById("reset").onclick = () => {
-  if (confirm("Reset both players and team progress?")) { state = newGame(); save(); render();
-    document.getElementById("result").className = "result"; document.getElementById("result").textContent = "New game! Pick a rock."; }
+  if (!net.isHost || !confirm("Reset both players and team progress?")) return;
+  const names = state.players.map(p => p.name);
+  state = newGame(); state.players.forEach((p, i) => (p.name = names[i]));
+  save(); broadcast({ text: "New game! Pick a rock.", ok: true, neutral: true });
 };
 document.getElementById("export").onclick = () => {
   const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
-  a.download = "mine-with-friends-save.json"; a.click();
+  a.download = `mine-with-friends-${net.code}.json`; a.click();
 };
 document.getElementById("import").onclick = () => {
   const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".json,application/json";
   inp.onchange = async () => {
-    try { const s = JSON.parse(await inp.files[0].text()); if (!s.players) throw 0; state = s; save(); render(); }
-    catch { alert("That doesn't look like a Mine with friends save file."); }
+    try {
+      const s = JSON.parse(await inp.files[0].text()); if (!s.players || !s.team) throw 0;
+      state = s; save(); broadcast({ text: "Save imported.", ok: true, neutral: true });
+    } catch { alert("That doesn't look like a Mine with friends save file."); }
   };
   inp.click();
 };
+window.addEventListener("beforeunload", save);
 
-render();
+showLobby();
 </script>
 </body>
 </html>
