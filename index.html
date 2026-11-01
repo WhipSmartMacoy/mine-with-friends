@@ -1400,6 +1400,7 @@ const ENEMY_PALS = {
   golem: { K: "#22182a", G: "#8a8496", g: "#5e5868", C: "#7ae0ff", Y: "#ffe070" },
 };
 const enemyArt = {};
+let BAT_FRAMES = null;   // hand-drawn bat (sprites/bat.png): 4 flap frames, 64x64 each
 const enemySprite = (type, f) => enemyArt[type + f] || (enemyArt[type + f] = paint(enemyGrid(type, f), ENEMY_PALS[type], { passes: 0 }));
 const DAGGER_MAP = [".......M", "......MM", ".....MM.", "....MM..", ".K.MM...", "..KM....", ".KPK....", "P.K....."];
 const daggerArt = {};
@@ -1723,7 +1724,9 @@ function drawStation(st, now) {
 function drawEnemy(e, now) {
   const d = enemyDisp[e.id] || (enemyDisp[e.id] = { x: e.x, y: e.y });
   const f = Math.floor(now / (e.type === "bat" ? 160 : 380)) % 2;
-  const img = enemySprite(e.type, f), big = e.type === "golem" ? 1.25 : e.type === "bat" ? 0.95 : 1;
+  const custom = e.type === "bat" && BAT_FRAMES;
+  const img = custom ? BAT_FRAMES[Math.floor(now / 85) % BAT_FRAMES.length] : enemySprite(e.type, f);
+  const big = e.type === "golem" ? 1.25 : custom ? 1.4 : e.type === "bat" ? 0.95 : 1;
   const w = TS * big, cx = d.x * TS + TS / 2, feet = d.y * TS + TS;
   ctx.fillStyle = "#00000055"; ctx.beginPath(); ctx.ellipse(cx, feet - 4, 14 * big, 4.5, 0, 0, Math.PI * 2); ctx.fill();
   const lift = e.type === "bat" ? 10 + Math.sin(now / 200 + e.id) * 3 : 0;
@@ -1734,7 +1737,7 @@ function drawEnemy(e, now) {
   if (now - (enemyFlash[e.id] || -1e9) < 140) {                 // white hit flash
     ctx.globalAlpha = .6; ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.ellipse(cx, feet - w / 2 - lift, w * .35, w * .35, 0, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
   }
-  hpBar(cx, feet - w - lift - 4, e.hp, e.max, "#ff5a5a");
+  hpBar(cx, feet - (custom ? w * 0.68 : w) - lift - 4, e.hp, e.max, "#ff5a5a");
 }
 function hpBar(cx, y, hp, max, color) {
   const bw = 30, frac = Math.max(0, Math.min(1, hp / max));
@@ -2381,6 +2384,7 @@ state = newGame();
   if (prefs.name) document.getElementById("my-name").value = prefs.name;
   // First visit: build your miner. After that, go straight to the lobby (with an Edit button).
   if (prefs.name && prefs.look) showLobby(); else showCreator();
+  loadImage("sprites/bat.png").then(img => { BAT_FRAMES = [0, 1, 2, 3].map(i => sliceFrame(img, i, 0, 64, 64, 1)); }).catch(() => {});
   loadCustomSprites().then(() => {
     if (!CUSTOM.list.length && !CUSTOM.rocks && !CUSTOM.stations) return;
     // The site's default sprite-sheet character is applied once; players can still pick "Build your own".
