@@ -403,13 +403,13 @@ const MILESTONES = [
 ];
 
 // ---- Rooms (tiles). Both rooms share one 20x12 grid.
-const T = 16, S = 3, TS = T * S, W = 20, H = 12, ROCK_COUNT = 12;
+const T = 16, S = 3, TS = T * S, W = 20, H = 20, ROCK_COUNT = 20;   // rooms are 20x20 tiles = 1280x1280 px
 const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 const ROOMS = {
   mine:     { inside: (x, y) => x >= 1 && x <= W - 2 && y >= 2 && y <= H - 2, door: { x: 7, y: 1, to: "upgrades" } },
-  upgrades: { inside: (x, y) => x >= 3 && x <= 16 && y >= 3 && y <= 9,       door: { x: 10, y: 10, to: "mine" } },
+  upgrades: { inside: (x, y) => x >= 3 && x <= 16 && y >= 3 && y <= H - 3, door: { x: 10, y: H - 2, to: "mine" } },
 };
-const ARRIVE = { upgrades: { x: 10, y: 9, dir: "up" }, mine: { x: 7, y: 2, dir: "down" } };
+const ARRIVE = { upgrades: { x: 10, y: H - 3, dir: "up" }, mine: { x: 7, y: 2, dir: "down" } };
 // Interactive stations in the Upgrades room
 const STATIONS = [
   { id: "cart",  x: 3,  y: 3, name: "Upgrade Cart", verb: "browse upgrades" },
@@ -1544,7 +1544,7 @@ const backgrounds = {
       rg.addColorStop(0, "rgba(255,200,120,0.22)"); rg.addColorStop(1, "rgba(255,200,120,0)");
       g.fillStyle = rg; g.fillRect(fx, fy, fw, fh);
     }
-    const vg = g.createRadialGradient(W * TS / 2, H * TS / 2, 3 * TS, W * TS / 2, H * TS / 2, 11 * TS);
+    const vg = g.createRadialGradient(W * TS / 2, H * TS / 2, 4 * TS, W * TS / 2, H * TS / 2, 14 * TS);
     vg.addColorStop(0, "rgba(40,20,60,0)"); vg.addColorStop(1, "rgba(40,20,60,0.32)");   // soft edge shade
     g.fillStyle = vg; g.fillRect(fx, fy, fw, fh);
   }),
@@ -1577,9 +1577,9 @@ const backgrounds = {
           }
         }
         if (y === 2) { px(X, Y + 26 * h, 32, 6, "#8a5a34"); px(X, Y + 26 * h, 32, 1, "#c08a50"); }
-      } else if ((x === 2 || x === 17) && y >= 3 && y <= 10) {
+      } else if ((x === 2 || x === 17) && y >= 3 && y <= H - 2) {
         px(X, Y, 32, 32, "#8a5a34"); px(x === 2 ? X + 26 * h : X, Y, 6, 32, "#5a3420"); px(x === 2 ? X + 26 * h : X + 5 * h, Y, 1, 32, "#b07a44");
-      } else if (y === 10 && x >= 2 && x <= 17) {
+      } else if (y === H - 2 && x >= 2 && x <= 17) {
         px(X, Y, 32, 32, "#8a5a34"); px(X, Y, 32, 3, "#5a3420");
       } else {
         px(X, Y, 32, 32, "#2e2236");
@@ -1591,9 +1591,9 @@ const backgrounds = {
     g.font = `bold ${8 * h}px "Trebuchet MS", sans-serif`; g.textAlign = "center"; g.textBaseline = "middle";
     g.fillStyle = "#fff0b0"; g.fillText("▼ MINE", DX + 16 * h, DY + 20 * h);
   }, g => {
-    const rg = g.createRadialGradient(10 * TS, 4 * TS, TS, 10 * TS, 6 * TS, 9 * TS);
+    const rg = g.createRadialGradient(10 * TS, 4 * TS, TS, 10 * TS, H / 2 * TS, 11 * TS);
     rg.addColorStop(0, "rgba(255,220,150,0.18)"); rg.addColorStop(1, "rgba(60,20,40,0.28)");
-    g.fillStyle = rg; g.fillRect(3 * TS, 3 * TS, 14 * TS, 7 * TS);
+    g.fillStyle = rg; g.fillRect(3 * TS, 3 * TS, 14 * TS, (H - 5) * TS);
   }),
 };
 
