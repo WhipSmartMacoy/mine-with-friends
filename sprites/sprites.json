@@ -1,15 +1,23 @@
 {
+  "default": "bunny-miner",
   "characters": [
     {
-      "id": "example-miner",
-      "name": "Sheet Miner",
-      "file": "example-miner.png",
-      "frameWidth": 32,
-      "frameHeight": 40,
-      "scale": 2,
+      "id": "bunny-miner",
+      "name": "Bunny Miner",
+      "file": "bunny-miner.png",
+      "frameWidth": 56,
+      "frameHeight": 64,
+      "scale": 1.5,
       "rows": { "down": 0, "left": 1, "right": 2, "up": 3 },
-      "idle": 0,
-      "walk": [1, 2, 3, 4]
+      "idle": [0, 1],
+      "walk": [2, 3, 4, 5],
+      "mine": [6, 7],
+      "extrasRow": 4,
+      "wave": [0, 1],
+      "hurt": 2,
+      "sit": 3,
+      "doze": 4,
+      "drawsTool": true
     }
   ]
 }

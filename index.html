@@ -1871,7 +1871,7 @@ document.getElementById("act-btn").addEventListener("click", () => act());
 // ================= Custom sprite sheets =================
 // Drop PNG sheets into /sprites and list them in sprites/sprites.json (see sprites/README.md).
 // Character sheets: one row per direction (down, left, right, up), column 0 = idle, then walk frames.
-const CUSTOM = { characters: {}, list: [], rocks: null, stations: null };
+const CUSTOM = { characters: {}, list: [], rocks: null, stations: null, default: null };
 const SAFE_FILE = /^[\w.-]+\.png$/i, SAFE_ID = /^[\w-]{1,40}$/;
 function loadImage(src) {
   return new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = src; });
@@ -1908,6 +1908,7 @@ async function loadCustomSprites() {
       CUSTOM.list.push(ch.id);
     } catch (e) { console.warn("Couldn't load sprite sheet", ch.file, e); }
   }
+  if (SAFE_ID.test(man.default || "") && CUSTOM.characters[man.default]) CUSTOM.default = man.default;
   if (man.rocks && SAFE_FILE.test(man.rocks.file || "")) {
     try {
       const r = man.rocks, img = await loadImage("sprites/" + r.file), cache = {};
@@ -2189,6 +2190,13 @@ state = newGame();
   if (prefs.name && prefs.look) showLobby(); else showCreator();
   loadCustomSprites().then(() => {
     if (!CUSTOM.list.length && !CUSTOM.rocks && !CUSTOM.stations) return;
+    // The site's default sprite-sheet character is applied once; players can still pick "Build your own".
+    const pr = readJSON(PREFS_KEY) || {};
+    if (CUSTOM.default && pr.defaultSheetApplied !== CUSTOM.default) {
+      myLook.sheet = CUSTOM.default;
+      writeJSON(PREFS_KEY, { ...pr, look: pr.look ? { ...pr.look, sheet: CUSTOM.default } : undefined, defaultSheetApplied: CUSTOM.default });
+      if (!pr.look) delete (readJSON(PREFS_KEY) || {}).look;
+    }
     if (!document.getElementById("creator").classList.contains("hidden")) renderOptions(); else drawPreviews();
   });
 }
