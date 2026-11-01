@@ -792,11 +792,11 @@ function randomLook() {
 // ---- ¾-view chibi miners, drawn natively on a 32x32 grid ----
 // Letters are palette slots; "." is transparent. Outlines, shading and eye highlights are added by paint().
 // S/s skin · p blush · E eyes · M mouth · R/r hair · Y/y hat · L lamp · W white · C/c shirt · O/o pants · B shoes
-function newGrid() { return Array.from({ length: 32 }, () => Array(32).fill(".")); }
-function put(g, x, y, ch) { x = Math.round(x); y = Math.round(y); if (x >= 0 && x < 32 && y >= 0 && y < 32) g[y][x] = ch; }
+function newGrid(h = 32) { return Array.from({ length: h }, () => Array(32).fill(".")); }
+function put(g, x, y, ch) { x = Math.round(x); y = Math.round(y); if (x >= 0 && x < g[0].length && y >= 0 && y < g.length) g[y][x] = ch; }
 function rect(g, x0, y0, x1, y1, ch) { for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) put(g, x, y, ch); }
 function ell(g, cx, cy, rx, ry, ch, clip) {
-  for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
+  for (let y = 0; y < g.length; y++) for (let x = 0; x < g[0].length; x++) {
     const dx = (x + .5 - cx) / rx, dy = (y + .5 - cy) / ry;
     if (dx * dx + dy * dy <= 1 && (!clip || clip(x, y))) put(g, x, y, ch);
   }
@@ -804,125 +804,154 @@ function ell(g, cx, cy, rx, ry, ch, clip) {
 function spike(g, sx, baseY, h, lean, ch) {   // upward hair spike
   for (let r = 0; r < h; r++) { const w = Math.max(1, Math.round((h - r) * 0.8)); const cx = sx + lean * r / h; rect(g, Math.round(cx - w / 2), baseY - r, Math.round(cx + w / 2) - 1, baseY - r, ch); }
 }
+// A pointed lock of hair hanging down from (x, y0): `w` wide at the root, tapering to a tip,
+// drifting `drift` pixels sideways by the end. Layering many of these gives anime-style hair.
+function lock(g, x, y0, len, w, drift, ch, tip = "r") {
+  for (let r = 0; r < len; r++) {
+    const ww = Math.max(1, Math.round(w * (1 - r / len))), cx = x + drift * r / len;
+    rect(g, Math.round(cx - ww / 2), y0 + r, Math.round(cx - ww / 2) + ww - 1, y0 + r, r >= len - 2 ? tip : ch);
+  }
+}
 
+// Miners in the handheld tactics-RPG style: ~36px tall on a 32x40 grid, head about a third of
+// their height, layered hair, collar, belt & buckle, gloves and tall boots.
+// S/s skin · p blush · E eyes · M mouth · R/r/h hair · Y/y hat · L lamp · W white · C/c shirt
+// O/o pants · B/b boots & gloves · k belt · G buckle
 // frame: 0 = standing, 1–4 = walk (contact, pass, contact, pass)
+const SPRITE_H = 40;
 function chibiGrid(look, dir, frame) {
-  const g = newGrid();
+  const g = newGrid(SPRITE_H);
   const hair = LOOKS.hairStyle[look.hairStyle], hat = LOOKS.hatStyle[look.hatStyle];
   const b = frame === 2 || frame === 4 ? -1 : 0;              // body bobs up on passing frames
-  const hb = b - 1;                                            // head sits a pixel higher (taller build)
   const stride = frame === 1 ? 1 : frame === 3 ? -1 : 0;       // +1: left leg forward
-  const side = dir === "right";
-  const hx = side ? 15 : 16;                                   // head centre x
+  const side = dir === "right", front = dir === "down", back = dir === "up";
+  const arm = -stride;                                          // arms swing opposite the legs
+  const hx = side ? 15 : 16;
 
   // ---------- long hair behind the body ----------
-  if (hair === "Long" && dir === "down") ell(g, 16, 15 + hb, 8.5, 8, "R", (x, y) => y >= 9 + hb && y <= 22 + b);
-  if (hair === "Long" && side) { rect(g, 8, 8 + hb, 12, 20 + b, "R"); rect(g, 9, 21 + b, 11, 22 + b, "r"); }
+  if (hair === "Long" && front) {
+    ell(g, 16, 18 + b, 9.5, 11, "R", (x, y) => y >= 10 + b && y <= 27 + b);
+    for (const [x, d] of [[9, -1], [12, 0], [19, 0], [22, 1]]) lock(g, x, 25 + b, 5, 3, d, "R");
+  }
+  if (hair === "Long" && side) { rect(g, 7, 8 + b, 13, 24 + b, "R"); for (const x of [8, 11]) lock(g, x, 24 + b, 5, 3, -1, "R"); }
 
-  // ---------- legs & shoes (long, slim) ----------
+  // ---------- legs & tall boots ----------
   if (!side) {
-    const endL = 28 - (stride < 0 ? 1 : 0), endR = 28 - (stride > 0 ? 1 : 0);
-    rect(g, 13, 25, 14, endL, "O"); rect(g, 17, 25, 18, endR, "O");
-    rect(g, 12, endL + 1, 14, endL + 2, "B"); rect(g, 17, endR + 1, 19, endR + 2, "B");
+    const endL = 32 + stride, endR = 32 - stride;               // forward leg reaches lower (closer to camera)
+    rect(g, 12, 29, 14, endL, "O"); rect(g, 17, 29, 19, endR, "O");
+    for (const [x0, x1, e] of [[11, 14, endL], [17, 20, endR]]) { rect(g, x0, e + 1, x1, e + 5, "B"); rect(g, x0, e + 1, x1, e + 1, "b"); }
   } else {
     const off = stride * 2;
-    for (const [x0, ch] of [[14 - off, "o"], [16 + off, "O"]]) { rect(g, x0, 25, x0 + 1, 28, ch); rect(g, x0, 29, x0 + 3, 30, "B"); }
+    for (const [x0, ch] of [[13 - off, "o"], [16 + off, "O"]]) {
+      rect(g, x0, 29, x0 + 2, 32, ch); rect(g, x0, 33, x0 + 2, 37, "B"); rect(g, x0 + 3, 36, x0 + 3, 37, "B"); rect(g, x0, 33, x0 + 2, 33, "b");
+    }
   }
 
-  // ---------- torso, hips, arms (slim) ----------
-  const arm = -stride;                                          // arms swing opposite the legs
+  // ---------- torso, belt, arms ----------
   if (!side) {
-    rect(g, 12, 16 + b, 19, 22 + b, "C"); rect(g, 12, 22 + b, 19, 22 + b, "c");
-    rect(g, 13, 23 + b, 18, 25, "O");
-    if (dir === "down") { put(g, 15, 16 + b, "S"); put(g, 16, 16 + b, "S"); }
-    const aL = arm, aR = -arm;
-    rect(g, 10, 17 + b + aL, 11, 21 + b + aL, "c"); rect(g, 10, 22 + b + aL, 11, 23 + b + aL, "S");
-    rect(g, 20, 17 + b + aR, 21, 21 + b + aR, "c"); rect(g, 20, 22 + b + aR, 21, 23 + b + aR, "S");
+    rect(g, 11, 18 + b, 20, 23 + b, "C"); rect(g, 12, 24 + b, 19, 26 + b, "C"); rect(g, 12, 26 + b, 19, 26 + b, "c");
+    rect(g, 12, 27 + b, 19, 28 + b, "k");                                            // belt
+    rect(g, 12, 29 + b, 19, 30, "O");                                                // hips
+    if (front) {
+      rect(g, 14, 18 + b, 17, 18 + b, "W"); put(g, 15, 19 + b, "S"); put(g, 16, 19 + b, "S");   // collar & neckline
+      rect(g, 15, 27 + b, 16, 28 + b, "G");                                          // buckle
+      rect(g, 15, 21 + b, 15, 25 + b, "c");                                          // shirt seam
+    } else rect(g, 13, 18 + b, 18, 18 + b, "W");
+    for (const [x0, a] of [[9, arm], [21, -arm]]) {
+      rect(g, x0, 19 + b + a, x0 + 1, 24 + b + a, "c");                              // sleeve
+      rect(g, x0, 25 + b + a, x0 + 1, 27 + b + a, "B");                              // glove
+    }
   } else {
-    rect(g, 13, 16 + b, 18, 22 + b, "C"); rect(g, 13, 22 + b, 18, 22 + b, "c");
-    rect(g, 13, 23 + b, 18, 25, "O");
+    rect(g, 13, 18 + b, 19, 26 + b, "C"); rect(g, 13, 26 + b, 19, 26 + b, "c"); rect(g, 18, 18 + b, 19, 18 + b, "W");
+    rect(g, 13, 27 + b, 19, 28 + b, "k"); put(g, 19, 27 + b, "G");
+    rect(g, 13, 29 + b, 19, 30, "O");
     const ax = 15 + arm * 2;
-    rect(g, ax, 17 + b, ax + 1, 21 + b, "c"); rect(g, ax, 22 + b, ax + 1, 23 + b, "S");
+    rect(g, ax, 19 + b, ax + 1, 24 + b, "c"); rect(g, ax, 25 + b, ax + 1, 27 + b, "B");
   }
 
-  // ---------- head (still big, a little narrower) ----------
-  ell(g, hx, 10 + hb, 7, 7, "S");
-  if (dir === "down") {
-    rect(g, 12, 10 + hb, 13, 12 + hb, "E"); rect(g, 18, 10 + hb, 19, 12 + hb, "E");
-    put(g, 11, 13 + hb, "p"); put(g, 20, 13 + hb, "p");
-    put(g, 15, 14 + hb, "M"); put(g, 16, 14 + hb, "M");
+  // ---------- neck & head ----------
+  rect(g, 14, 16 + b, 17, 17 + b, "s");
+  ell(g, hx, 10.5 + b, side ? 6.5 : 6.8, 6.8, "S");
+  if (front) {
+    rect(g, 12, 10 + b, 13, 12 + b, "E"); rect(g, 18, 10 + b, 19, 12 + b, "E");
+    rect(g, 12, 8 + b, 13, 8 + b, "r"); rect(g, 18, 8 + b, 19, 8 + b, "r");          // brows
+    put(g, 16, 12 + b, "s"); put(g, 15, 14 + b, "M"); put(g, 16, 14 + b, "M");      // nose & mouth
+    put(g, 11, 13 + b, "p"); put(g, 20, 13 + b, "p");
   } else if (side) {
-    rect(g, 19, 10 + hb, 20, 12 + hb, "E");
-    put(g, 18, 13 + hb, "p"); put(g, 19, 13 + hb, "p");
-    put(g, 21, 14 + hb, "M");
-    put(g, 22, 11 + hb, "S");                                   // little nose
-    rect(g, 13, 10 + hb, 14, 12 + hb, "s");                     // ear
+    rect(g, 19, 10 + b, 20, 12 + b, "E"); rect(g, 19, 8 + b, 20, 8 + b, "r");
+    put(g, 22, 11 + b, "S");                                                        // nose
+    put(g, 21, 14 + b, "M"); put(g, 19, 13 + b, "p");
+    rect(g, 13, 10 + b, 14, 12 + b, "s");                                           // ear
   }
 
-  // ---------- hair (big volume) ----------
+  // ---------- layered hair ----------
   if (hair !== "Bald") {
-    if (dir === "down") {
-      ell(g, 16, 8 + hb, 8.5, 6.8, "R", (x, y) => y <= 9 + hb);
-      for (let x = 9; x <= 22; x++) rect(g, x, 8 + hb, x, 9 + hb + ((x * 7) % 3 === 0 ? 1 : 0), "R");
-      const sideEnd = hair === "Long" ? 19 : 13;
-      rect(g, 7, 7 + hb, 9, sideEnd + hb, "R"); rect(g, 22, 7 + hb, 24, sideEnd + hb, "R");
-      put(g, 8, sideEnd + 1 + hb, "R"); put(g, 23, sideEnd + 1 + hb, "R");
-      rect(g, 11, 3 + hb, 13, 3 + hb, "h"); rect(g, 10, 4 + hb, 10, 4 + hb, "h"); rect(g, 18, 3 + hb, 20, 3 + hb, "h");
-    } else if (dir === "up") {
-      ell(g, 16, 9.5 + hb, 8.5, 8.3, "R", (x, y) => y <= (hair === "Long" ? 14 : 15) + hb);
-      if (hair === "Long") { rect(g, 8, 9 + hb, 23, 21 + b, "R"); for (let x = 9; x <= 22; x += 2) put(g, x, 22 + b, "R"); }
-      rect(g, 11, 3 + hb, 15, 3 + hb, "h"); rect(g, 10, 4 + hb, 10, 4 + hb, "h");
-      for (const x of [13, 19]) rect(g, x, 9 + hb, x, 13 + hb, "r");
+    if (front) {
+      ell(g, 16, 8 + b, 8.6, 7, "R", (x, y) => y <= 9 + b);                         // crown volume
+      const sideLen = hair === "Long" ? 16 : hair === "Spiky" ? 7 : 9;
+      lock(g, 8, 6 + b, sideLen, 3, -1, "R"); lock(g, 24, 6 + b, sideLen, 3, 1, "R");     // locks framing the face
+      lock(g, 10, 7 + b, 5, 3, -1, "R"); lock(g, 22, 7 + b, 5, 3, 1, "R");
+      for (const [x, len, d] of [[11, 3, 0], [14, 2, 1], [17, 3, 0], [20, 2, -1]]) lock(g, x, 8 + b, len, 3, d, "R");  // bangs
+      rect(g, 13, 3 + b, 13, 6 + b, "r"); rect(g, 18, 2 + b, 18, 5 + b, "r");      // strand lines
+      rect(g, 10, 3 + b, 12, 3 + b, "h"); rect(g, 9, 4 + b, 9, 5 + b, "h"); rect(g, 19, 3 + b, 21, 3 + b, "h");   // shine
+    } else if (back) {
+      ell(g, 16, 9.5 + b, 8.6, 8.6, "R", (x, y) => y <= 15 + b);
+      if (hair === "Long") { rect(g, 8, 10 + b, 23, 24 + b, "R"); for (let x = 9; x <= 22; x += 3) lock(g, x, 24 + b, 5, 3, 0, "R"); }
+      else for (let x = 10; x <= 22; x += 3) lock(g, x, 14 + b, 4, 3, (x - 16) / 4, "R");   // nape
+      for (const x of [12, 16, 20]) rect(g, x, 6 + b, x, 12 + b, "r");
+      rect(g, 11, 3 + b, 15, 3 + b, "h"); rect(g, 10, 4 + b, 10, 5 + b, "h");
     } else {
-      ell(g, 15, 8 + hb, 8.5, 6.8, "R", (x, y) => y <= 9 + hb);
-      rect(g, 7, 7 + hb, 13, 14 + hb, "R");
-      for (let x = 17; x <= 22; x++) rect(g, x, 8 + hb, x, 9 + hb + (x % 3 === 0 ? 1 : 0), "R");
-      rect(g, 9, 3 + hb, 12, 3 + hb, "h"); rect(g, 8, 4 + hb, 8, 4 + hb, "h");
+      ell(g, 15, 8 + b, 8.6, 7, "R", (x, y) => y <= 9 + b);
+      rect(g, 7, 7 + b, 13, 13 + b, "R");                                           // back of the head
+      for (const [x, d] of [[8, -1], [11, -1]]) lock(g, x, 13 + b, hair === "Long" ? 4 : 5, 3, d, "R");
+      for (const [x, len] of [[18, 3], [21, 3], [23, 2]]) lock(g, x, 8 + b, len, 3, 1, "R");   // bangs swept forward
+      rect(g, 12, 3 + b, 12, 7 + b, "r"); rect(g, 9, 3 + b, 12, 3 + b, "h"); rect(g, 8, 4 + b, 8, 5 + b, "h");
     }
     if (hair === "Spiky" && hat === "None") {
-      const xs = side ? [8, 12, 16, 19] : [10, 13, 18, 21];
-      xs.forEach((sx, i) => spike(g, sx, 4 + hb, 3 + (i % 2), side ? -2 : (i - 1.5), "R"));
+      const xs = side ? [7, 11, 15, 19] : [9, 13, 18, 22];
+      xs.forEach((sx, i) => spike(g, sx, 4 + b, 4 + (i % 2), side ? -2.5 : (i - 1.5) * 1.3, "R"));
     }
   }
 
   // ---------- hats ----------
-  const top = lim => (x, y) => y <= lim + hb;
+  const top = lim => (x, y) => y <= lim + b;
   if (hat === "Helmet") {
-    ell(g, hx, 7.5 + hb, 8.5, 6.8, "Y", top(7));
-    rect(g, 7, 7 + hb, 24, 8 + hb, "y");
-    if (dir === "down") { rect(g, 13, 1 + hb, 18, 5 + hb, "K"); rect(g, 14, 2 + hb, 17, 4 + hb, "L"); }
-    if (side) { rect(g, 20, 2 + hb, 24, 6 + hb, "K"); rect(g, 21, 3 + hb, 23, 5 + hb, "L"); }
+    ell(g, hx, 6.5 + b, 8.8, 6.3, "Y", top(6));
+    rect(g, 7, 6 + b, 24, 7 + b, "y");
+    if (front) { rect(g, 13, 0, 18, 4 + b, "K"); rect(g, 14, 1 + b, 17, 3 + b, "L"); }
+    if (side) { rect(g, 20, 1 + b, 24, 5 + b, "K"); rect(g, 21, 2 + b, 23, 4 + b, "L"); }
   } else if (hat === "Cap") {
-    ell(g, hx, 7.5 + hb, 8, 6.3, "Y", top(7));
-    if (dir === "down") ell(g, 16, 8.5 + hb, 8.5, 2.1, "y", (x, y) => y >= 8 + hb);
-    else if (side) rect(g, 18, 7 + hb, 26, 8 + hb, "y");
-    else rect(g, 9, 7 + hb, 22, 7 + hb, "y");
-    put(g, hx, 1 + hb, "y");
+    ell(g, hx, 6.5 + b, 8.3, 5.8, "Y", top(6));
+    if (front) ell(g, 16, 7.5 + b, 8.8, 2.1, "y", (x, y) => y >= 7 + b);
+    else if (side) rect(g, 18, 6 + b, 26, 7 + b, "y");
+    else rect(g, 9, 6 + b, 22, 6 + b, "y");
+    put(g, hx, 0.6 + b, "y");
   } else if (hat === "Beanie") {
-    ell(g, hx, 8 + hb, 8.5, 7.3, "Y", top(8));
-    rect(g, 7, 7 + hb, 24, 9 + hb, "y");
-    for (let x = 8; x <= 23; x += 2) rect(g, x, 7 + hb, x, 9 + hb, "Y");
-    ell(g, side ? 14 : 16, 1.5 + hb, 2.4, 2.2, "W");
+    ell(g, hx, 7 + b, 8.8, 6.8, "Y", top(7));
+    rect(g, 7, 6 + b, 24, 8 + b, "y");
+    for (let x = 8; x <= 23; x += 2) rect(g, x, 6 + b, x, 8 + b, "Y");
+    ell(g, side ? 14 : 16, 1 + b, 2.3, 2, "W");
   } else if (hat === "Cowboy") {
-    rect(g, hx - 4, 1 + hb, hx + 3, 6 + hb, "Y"); put(g, hx - 1, 1 + hb, "."); put(g, hx, 1 + hb, ".");
-    rect(g, hx - 4, 5 + hb, hx + 3, 6 + hb, "y");
-    ell(g, hx, 7.5 + hb, 13, 2.4, "Y");
-    rect(g, hx - 10, 8 + hb, hx + 10, 8 + hb, "y");
+    rect(g, hx - 4, 0, hx + 3, 5 + b, "Y"); put(g, hx - 1, 0, "."); put(g, hx, 0, ".");
+    rect(g, hx - 4, 4 + b, hx + 3, 5 + b, "y");
+    ell(g, hx, 6.5 + b, 13, 2.3, "Y");
+    rect(g, hx - 10, 7 + b, hx + 10, 7 + b, "y");
   }
   return g.map(r => r.join(""));
 }
 
-const blush = skin => { const [r, g, b] = rgbOf(skin); return `rgb(${Math.min(255, r + 18)},${Math.round(g * 0.78)},${Math.round(b * 0.78)})`; };
+const skinShade = skin => { const [r, g, b] = rgbOf(skin), t = 0.28, to = [150, 80, 96]; return `rgb(${[r, g, b].map((v, k) => Math.round(v * (1 - t) + to[k] * t)).join(",")})`; };
+const blush = skin => { const [r, g, b] = rgbOf(skin), pk = [255, 120, 140], t = 0.3; return `rgb(${[r, g, b].map((v, k) => Math.round(v * (1 - t) + pk[k] * t)).join(",")})`; };
 function lookPalette(look) {
   const c = (k) => LOOKS[k][look[k]][0];
   return {
     K: "#2a1814", E: "#2a1c30", L: "#fff6c0",
-    S: c("skin"), s: ramp(c("skin"), -1), p: blush(c("skin")),
+    S: c("skin"), s: skinShade(c("skin")), p: blush(c("skin")),
     R: c("hairColor"), r: ramp(c("hairColor"), -1), h: ramp(c("hairColor"), 2),
     Y: c("hatColor"), y: ramp(c("hatColor"), -1),
     C: c("shirt"), c: ramp(c("shirt"), -1),
     O: c("pants"), o: ramp(c("pants"), -1),
-    B: c("shoes"), M: "#9a4a46", W: "#f4f0e8",
+    B: c("shoes"), b: ramp(c("shoes"), 2), k: "#6a4024", G: "#ffd860", M: "#9a4a46", W: "#f4f0e8",
   };
 }
 
@@ -1059,7 +1088,7 @@ function ramp(c, step) {
   if (step > 0) { l += 0.085 * step; s = Math.max(0, s - 0.02 * step); if (!grey) h = towardHue(h, 55, 7 * step); }
   else if (step < 0) {
     const k = -step;
-    l -= 0.1 * k; s = Math.min(1, s + 0.07 * k + (grey ? 0.07 * k : 0));
+    l -= 0.095 * k; s = grey ? Math.min(1, s + 0.07 * k) : s > 0.45 ? s * (1 - 0.11 * k) : Math.min(1, s + 0.04 * k);
     h = grey ? 235 : towardHue(h, 255, 7 * k);
   }
   l = Math.max(0.04, Math.min(0.97, l));
@@ -1090,7 +1119,9 @@ function paint(rows, pal, opts = {}) {
         .map(([dx, dy]) => ({ c: at(x + dx, y + dy), dx, dy })).find(n => fill(n.c) && n.c !== "E");
       if (below && !opts.rawOutline) {
         const lit = below.dy > 0 || below.dx > 0;      // fill is below/right → this is a top/left edge
-        col = seloutColor(ramp(pal[below.c], lit ? -2 : -3), 1, lit ? 0.2 : 0.35);
+        col = (below.c === "S" || below.c === "p") && pal.s
+          ? seloutColor(pal.s, lit ? 0.72 : 0.6, 0.45)                 // skin: warm brown outline
+          : seloutColor(ramp(pal[below.c], lit ? -2 : -3), 1, lit ? 0.2 : 0.35);
       }
     } else if (ch === "E") {
       // glossy eyes: highlight on the top-left pixel of each eye
@@ -1101,7 +1132,8 @@ function paint(rows, pal, opts = {}) {
       if (edge(at(x, y - 1)) || edge(at(x - 1, y))) st = 1;
       else if (edge(at(x, y + 1)) || edge(at(x + 1, y))) st = -2;
       else if (edge(at(x, y + 2)) || edge(at(x + 2, y))) st = -1;
-      if (st) col = ramp(pal[ch], st);
+      if (st < 0 && (ch === "S" || ch === "p") && pal.s) col = pal.s;   // skin: one soft rose-brown shadow
+      else if (st) col = ramp(pal[ch], st);
     }
     ctx2.fillStyle = col;
     ctx2.fillRect(x * HD_PX, y * HD_PX, HD_PX, HD_PX);
@@ -1479,15 +1511,15 @@ function drawPlayer(seat, now) {
   const moving = Math.abs(d.x - p.x) + Math.abs(d.y - p.y) > 0.02;
   const set = playerSprites(seat)[p.dir || "down"];
   const img = moving ? set.walk[Math.floor(now / 110) % 4] : set.stand;
-  const x = d.x * TS, y = d.y * TS - 6;
+  const x = d.x * TS, y = d.y * TS - 6 - (SPRITE_H - 32) * S / 2;
   const sw = now - swing[seat];
   ctx.globalAlpha = present ? 1 : 0.35;
   ctx.fillStyle = "#00000055"; ctx.beginPath(); ctx.ellipse(x + TS / 2, d.y * TS + TS - 4, 15, 5, 0, 0, Math.PI * 2); ctx.fill();
-  if (sw < 220) drawSprite(pickSprite(p.pick, "raised"), x + 8 * S, y - 5 * S);
+  if (sw < 220) drawSprite(pickSprite(p.pick, "raised"), x + 8 * S, y - 2 * S);
   drawSprite(img, x, y);
   if (sw >= 220 && sw < 480) {
     const dir = p.dir || "down";
-    const off = { right: [11, 5], left: [-3, 5], down: [4, 11], up: [4, -5] }[dir];
+    const off = { right: [11, 9], left: [-3, 9], down: [4, 14], up: [4, -1] }[dir];
     drawSprite(pickSprite(p.pick, dir), x + off[0] * S, y + off[1] * S);
   }
   ctx.globalAlpha = 1;
@@ -1797,11 +1829,11 @@ function drawPreviews() {
   g.fillStyle = "#a8805a"; g.fillRect(0, 0, pc.width, pc.height);
   g.fillStyle = "#8a6440"; for (let i = 0; i < 40; i++) g.fillRect((i * 73) % 300, (i * 37) % 130, 3, 3);
   ["down", "right", "up"].forEach((d, i) => {
-    g.fillStyle = "#00000055"; g.beginPath(); g.ellipse(54 + i * 96, 112, 30, 8, 0, 0, Math.PI * 2); g.fill();
-    g.drawImage(sp[d].stand, 6 + i * 96, 14, 96, 96);
+    g.fillStyle = "#00000055"; g.beginPath(); g.ellipse(54 + i * 96, 100, 26, 7, 0, 0, Math.PI * 2); g.fill();
+    g.drawImage(sp[d].stand, 14 + i * 96, 4, 80, 100);
   });
   const mc = document.getElementById("me-preview"), m = mc.getContext("2d");
-  m.imageSmoothingEnabled = false; m.clearRect(0, 0, 48, 48); m.fillStyle = "#a8805a"; m.fillRect(0, 0, 48, 48); m.drawImage(sp.down.stand, 0, 0, 48, 48);
+  m.imageSmoothingEnabled = false; m.clearRect(0, 0, 48, 48); m.fillStyle = "#a8805a"; m.fillRect(0, 0, 48, 48); m.drawImage(sp.down.stand, 5, -2, 40, 50);
 }
 
 function showCreator() {
