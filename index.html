@@ -414,7 +414,7 @@
 // ================= Version & fresh assets =================
 // BUILD changes with every release. Asset URLs carry it, so phones can't keep showing stale images,
 // and on load we check whether the server has a newer build than the one running.
-const BUILD = "2026.11.01-2100";
+const BUILD = "2026.11.02-0800";
 const withV = url => /^(https?:|data:|blob:)/.test(url) ? url : url + (url.includes("?") ? "&" : "?") + "v=" + BUILD;
 // ---- Screen fit: detect the phone from its screen size (in points) and pick a layout profile
 function detectDevice() {
@@ -2121,19 +2121,43 @@ const daggerSprite = tier => daggerArt[tier] || (daggerArt[tier] = paint(DAGGER_
 
 // ================= Room rendering =================
 const canvas = document.getElementById("mine");
-const world = mkCanvas(W * TS * K, H * TS * K);  // whole room is drawn here (at 32-bit resolution)…
-const ctx = world.getContext("2d");
-ctx.setTransform(K, 0, 0, K, 0, 0);
-ctx.imageSmoothingEnabled = false;
-const vctx = canvas.getContext("2d");              // …then the visible part is copied to the screen
+const ctx = canvas.getContext("2d");            // isometric view: drawn straight to the screen each frame
+const vctx = ctx;
 const isTouch = matchMedia("(hover: none)").matches;
 // "follow" = zoomed camera that tracks your miner (default on small screens); "full" = whole room.
-let viewMode = (readJSON(PREFS_KEY) || {}).viewV2 || "full";   // rooms fit on any screen now
+let viewMode = (readJSON(PREFS_KEY) || {}).viewIso || "follow";   // "follow" = close-up, "full" = wider
 let view = { x: 0, y: 0, w: W * TS, h: H * TS };
 let ui = 1;   // text scale, so labels stay readable however small the game is shown
 const org = { x: 0, y: 0 };   // top-left tile of the room on screen (overworld rooms sit side by side)
 
+// ================= Isometric view =================
+// The world is still a grid of tiles; it's just drawn turned 45° and tilted (2:1 diamonds).
+const IW = 72, IH = 36, IZ = 30;                  // diamond width / height, and one unit of height (world units)
+const isoX = (x, y) => (x - y) * IW / 2, isoY = (x, y, z = 0) => (x + y) * IH / 2 - z * IZ;
+// Sprites are still drawn by the top-down code; shift each one so its feet land on its tile in the iso view.
+const tdDelta = (tx, ty) => [isoX(tx + .5, ty + .5) - (tx + .5) * TS, isoY(tx + .5, ty + .5) - (ty + 1) * TS + 4];
+function atTile(tx, ty, fn) { const [dx, dy] = tdDelta(tx, ty); ctx.save(); ctx.translate(dx, dy); fn(); ctx.restore(); }
+const td2iso = (X, Y) => ({ x: isoX(X / TS, Y / TS), y: isoY(X / TS, Y / TS) - TS / 2 });
+let cam = { x0: 0, y0: 0, vw: 1, vh: 1, s: 1 };
 function updateView() {
+  const stage = document.getElementById("stage");
+  const sw = stage.clientWidth || 1, sh = stage.clientHeight || 1, dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+  const cw = Math.round(sw * dpr), ch = Math.round(sh * dpr);
+  if (canvas.width !== cw || canvas.height !== ch) { canvas.width = cw; canvas.height = ch; }
+  const across = viewMode === "follow" ? 6.2 : 9.5;              // diamonds across the narrower side
+  const s = Math.min(cw, ch) / (across * IW);
+  cam.s = s; cam.vw = cw / s; cam.vh = ch / s;
+  const me = state.players[net.seat], d = disp[net.seat];
+  let cx = isoX(d.x + .5, d.y + .5), cy = isoY(d.x + .5, d.y + .5) - 26;
+  if (me.room !== "world") {                                    // a mine level: keep the room in frame
+    const minX = isoX(0, H), maxX = isoX(W, 0), minY = isoY(0, 0, 2.6), maxY = isoY(W, H);
+    cx = (maxX - minX) <= cam.vw ? (minX + maxX) / 2 : Math.max(minX + cam.vw / 2, Math.min(maxX - cam.vw / 2, cx));
+    cy = (maxY - minY) <= cam.vh ? (minY + maxY) / 2 : Math.max(minY + cam.vh / 2, Math.min(maxY - cam.vh / 2, cy));
+  }
+  cam.x0 = cx - cam.vw / 2; cam.y0 = cy - cam.vh / 2;
+  ui = Math.max(1, Math.min(2.4, 12 / (13 * (s / dpr))));      // aim for ≥12 css px text
+}
+function updateViewTopDown() {
   const stage = document.getElementById("stage");
   const sw = stage.clientWidth || 1, sh = stage.clientHeight || 1, aspect = sw / sh;
   if (viewMode === "follow") {
@@ -2157,8 +2181,8 @@ function updateView() {
 }
 function setViewMode(m) {
   viewMode = m;
-  writeJSON(PREFS_KEY, { ...(readJSON(PREFS_KEY) || {}), viewV2: m });
-  document.getElementById("view-btn").textContent = m === "follow" ? "🗺️ Whole room" : "🔍 Zoom";
+  writeJSON(PREFS_KEY, { ...(readJSON(PREFS_KEY) || {}), viewIso: m });
+  document.getElementById("view-btn").textContent = m === "follow" ? "🗺️ Wider" : "🔍 Closer";
 }
 
 const TORCHES = [3, 10, 12];
@@ -2248,9 +2272,184 @@ function buildMineBg(tex) {
   });
 }
 const MINE_TEX = {};
+const isoCache = new Map();   // pre-drawn iso ground, one canvas per overworld room (+ the mine)
+const GS = 1.5;               // ground canvases: device px per world unit
+function diamond(g, x, y, z = 0) { return [{ x: isoX(x, y), y: isoY(x, y, z) }, { x: isoX(x + 1, y), y: isoY(x + 1, y, z) }, { x: isoX(x + 1, y + 1), y: isoY(x + 1, y + 1, z) }, { x: isoX(x, y + 1), y: isoY(x, y + 1, z) }]; }
+function polyFill(g, pts, fill, stroke, lw = 1) {
+  g.beginPath(); pts.forEach((p, k) => k ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y)); g.closePath();
+  if (fill) { g.fillStyle = fill; g.fill(); } if (stroke) { g.strokeStyle = stroke; g.lineWidth = lw; g.stroke(); }
+}
+// draw a texture region onto the parallelogram N + u·U + v·V (u, v from 0 to 1)
+function texQuad(g, img, sx, sy, sw, sh, N, U, V, shadeCol) {
+  g.save(); g.beginPath(); g.moveTo(N.x, N.y); g.lineTo(N.x + U.x, N.y + U.y); g.lineTo(N.x + U.x + V.x, N.y + U.y + V.y); g.lineTo(N.x + V.x, N.y + V.y); g.closePath(); g.clip();
+  g.transform(U.x / sw, U.y / sw, V.x / sh, V.y / sh, N.x, N.y);
+  g.imageSmoothingEnabled = true; g.drawImage(img, sx, sy, sw, sh, -0.6, -0.6, sw + 1.2, sh + 1.2);
+  g.restore();
+  if (shadeCol) { g.save(); g.beginPath(); g.moveTo(N.x, N.y); g.lineTo(N.x + U.x, N.y + U.y); g.lineTo(N.x + U.x + V.x, N.y + U.y + V.y); g.lineTo(N.x + V.x, N.y + V.y); g.closePath(); g.fillStyle = shadeCol; g.fill(); g.restore(); }
+}
+function texTop(g, img, src, x, y, z = 0, shadeCol) {
+  const N = { x: isoX(x, y), y: isoY(x, y, z) };
+  texQuad(g, img, ...src, N, { x: IW / 2, y: IH / 2 }, { x: -IW / 2, y: IH / 2 }, shadeCol);
+}
+// a block column at tile (x, y) from height z0 up to z: textured or coloured top + its two visible sides
+function column(g, x, y, z, o = {}) {
+  const z0 = o.z0 ?? 0, dz = (z - z0) * IZ;
+  const A = { x: isoX(x, y + 1), y: isoY(x, y + 1, z) }, B = { x: isoX(x + 1, y + 1), y: isoY(x + 1, y + 1, z) }, C = { x: isoX(x + 1, y), y: isoY(x + 1, y, z) };
+  if (dz > 0) {
+    if (o.side) {
+      const src = o.sideSrc || [0, 0, o.side.width, o.side.height];
+      texQuad(g, o.side, ...src, A, { x: B.x - A.x, y: B.y - A.y }, { x: 0, y: dz }, "rgba(20,10,30,.22)");
+      texQuad(g, o.side, ...src, B, { x: C.x - B.x, y: C.y - B.y }, { x: 0, y: dz }, "rgba(20,10,30,.45)");
+    } else {
+      polyFill(g, [A, B, { x: B.x, y: B.y + dz }, { x: A.x, y: A.y + dz }], o.sideL || "#7a5232");
+      polyFill(g, [B, C, { x: C.x, y: C.y + dz }, { x: B.x, y: B.y + dz }], o.sideR || "#5a3a22");
+    }
+  }
+  if (o.top) texTop(g, o.top, o.src || [0, 0, o.top.width, o.top.height], x, y, z, o.topShade);
+  else if (o.color) polyFill(g, diamond(g, x, y, z), o.color);
+  if (o.edge) polyFill(g, diamond(g, x, y, z), null, o.edge, 1);
+}
+function isoCanvas(x0, y0, w, h, extraTop = 1.5, extraBot = 0.6) {   // canvas whose drawing space is global iso units
+  const ox = isoX(x0, y0 + h), oy = isoY(x0, y0) - extraTop * IZ;
+  const cw = (w + h) * IW / 2, chh = (w + h) * IH / 2 + (extraTop + extraBot) * IZ;
+  const c = mkCanvas(Math.ceil(cw * GS), Math.ceil(chh * GS)), g = c.getContext("2d");
+  g.setTransform(GS, 0, 0, GS, -ox * GS, -oy * GS);
+  return { c, g, ox, oy, cw, chh };
+}
+function grassSrc(x, y) { const lx = ((x % W) + W) % W, ly = ((y % H) + H) % H; return [lx * 64, ly * 64, 64, 64]; }
+function isoWorldRoom(rx, ry) {
+  const key = `w${rx},${ry}`;
+  if (isoCache.has(key)) { const v = isoCache.get(key); isoCache.delete(key); isoCache.set(key, v); return v; }
+  const x0 = rx * W, y0 = ry * H, R = isoCanvas(x0, y0, W, H, 0.5, 0.6), g = R.g;
+  for (let sum = 0; sum <= W + H - 2; sum++) for (let lx = 0; lx < W; lx++) {
+    const ly = sum - lx; if (ly < 0 || ly >= H) continue;
+    const x = x0 + lx, y = y0 + ly, t = worldTile(x, y);
+    if (t === "edge") continue;
+    if (t === "water") {
+      polyFill(g, diamond(g, x, y, -0.22), "#4a9ee0");
+      g.strokeStyle = "rgba(200,240,255,.55)"; g.lineWidth = 1.2;
+      for (let k = 0; k < 2; k++) { const cx = isoX(x + .3 + hash2(x, y, 10 + k) * .4, y + .3 + hash2(x, y, 20 + k) * .4), cy = isoY(x + .3 + hash2(x, y, 10 + k) * .4, y + .3 + hash2(x, y, 20 + k) * .4, -0.22); g.beginPath(); g.moveTo(cx - 6, cy); g.lineTo(cx + 6, cy); g.stroke(); }
+      continue;
+    }
+    const lip = ["water"].includes(worldTile(x + 1, y)) || ["water"].includes(worldTile(x, y + 1));
+    if (t === "path" && WORLD_TEX.brick) {
+      const broken = WORLD_TEX.broken && hash2(x, y, 41) < 0.1;
+      column(g, x, y, 0, { z0: -0.22, sideL: "#6a4a2a", sideR: "#4a3220" });
+      if (WORLD_TEX.grass) texTop(g, WORLD_TEX.grass, grassSrc(x, y), x, y, 0);
+      texTop(g, broken ? WORLD_TEX.broken : WORLD_TEX.brick, [0, 0, 64, 64], x, y, 0);
+      continue;
+    }
+    column(g, x, y, 0, { z0: lip ? -0.22 : 0, sideL: "#7a5a32", sideR: "#5a4022",
+      top: WORLD_TEX.grass, src: grassSrc(x, y), color: t === "path" ? "#cfa66c" : ["#6cbf4f", "#66b84a", "#72c455"][Math.floor(hash2(x, y, 3) * 3)] });
+    if (t === "flower") {
+      const fc = ["#ffffff", "#ffe070", "#ff8ab0", "#b0a0ff"][Math.floor(hash2(x, y, 5) * 4)];
+      for (let k = 0; k < 3; k++) { const u = .25 + hash2(x, y, 30 + k) * .5, v = .25 + hash2(x, y, 40 + k) * .5; g.fillStyle = fc; g.beginPath(); g.arc(isoX(x + u, y + v), isoY(x + u, y + v), 2.4, 0, 7); g.fill(); g.fillStyle = "#ffb030"; g.fillRect(isoX(x + u, y + v) - .8, isoY(x + u, y + v) - .8, 1.6, 1.6); }
+    }
+  }
+  isoCache.set(key, R);
+  while (isoCache.size > 6) isoCache.delete(isoCache.keys().next().value);
+  return R;
+}
+// The mine: earthen floor, tall block walls at the back, low ones at the front (drawn after everything else)
+function isoMine(front) {
+  const key = front ? "mineFront" : "mine";
+  if (isoCache.has(key)) return isoCache.get(key);
+  const R = isoCanvas(0, 0, W, H, 2.8, 0.8), g = R.g, inside = ROOMS.mine.inside, B = MINE_TEX.blocks, BG = MINE_TEX.bg;
+  const back = (x, y) => !inside(x, y) && (y <= 1 || x === 0);
+  for (let sum = 0; sum <= W + H - 2; sum++) for (let x = 0; x < W; x++) {
+    const y = sum - x; if (y < 0 || y >= H) continue;
+    if (front) { if (!inside(x, y) && !back(x, y)) column(g, x, y, 0.4, { side: B, top: B, topShade: "rgba(0,0,0,.25)", sideL: "#4a4250", sideR: "#3a3440", color: "#5a5262" }); continue; }
+    if (inside(x, y) || !back(x, y)) column(g, x, y, 0, { top: BG, src: [x * 64, y * 64, 64, 64], color: "#6a4a3a", edge: "rgba(0,0,0,.08)" });
+    else column(g, x, y, y === 0 || x === 0 ? 2.4 : 2.4, { side: B, top: B, topShade: "rgba(0,0,0,.2)", sideL: "#5a5262", sideR: "#3a3440", color: "#6a6272" });
+    if (x === ROOMS.mine.door.x && y === ROOMS.mine.door.y) {      // the ladder up, on the wall's front face
+      const a = { x: isoX(x + .2, y + 1), y: isoY(x + .2, y + 1) }, b = { x: isoX(x + .8, y + 1), y: isoY(x + .8, y + 1) }, top = 2.1 * IZ;
+      polyFill(g, [a, b, { x: b.x, y: b.y - top }, { x: a.x, y: a.y - top }], "#1a1018");
+      g.strokeStyle = "#9a6a3a"; g.lineWidth = 2.5;
+      for (const q of [.32, .68]) { const p1 = { x: a.x + (b.x - a.x) * q, y: a.y + (b.y - a.y) * q }; g.beginPath(); g.moveTo(p1.x, p1.y); g.lineTo(p1.x, p1.y - top); g.stroke(); }
+      for (let k = 0; k < 6; k++) { const yy = k * top / 6 + 6; g.beginPath(); g.moveTo(a.x + (b.x - a.x) * .32, a.y + (b.y - a.y) * .32 - yy); g.lineTo(a.x + (b.x - a.x) * .68, a.y + (b.y - a.y) * .68 - yy); g.stroke(); }
+    }
+    if (y === 1 && TORCHES.includes(x)) { const p0 = { x: isoX(x + .5, 2), y: isoY(x + .5, 2, 1.45) }; g.fillStyle = "#6a4024"; g.fillRect(p0.x - 2, p0.y, 4, 12); g.fillStyle = "#4a2a1a"; g.fillRect(p0.x - 4, p0.y - 2, 8, 3); }
+  }
+  isoCache.set(key, R);
+  return R;
+}
+const drawIsoCanvas = R => { ctx.save(); ctx.imageSmoothingEnabled = true; ctx.drawImage(R.c, R.ox, R.oy, R.cw, R.chh); ctx.restore(); };
+// Scenery that stands up off the ground (and so sorts in front of / behind the players)
+function drawTreeIso(x, y, art, scale = 1.5) {
+  const cx = isoX(x + .5, y + .5), cy = isoY(x + .5, y + .5), w = TS * scale;
+  ctx.fillStyle = "rgba(0,0,0,.25)"; ctx.beginPath(); ctx.ellipse(cx, cy, w * .28, w * .12, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.drawImage(art, cx - w / 2, cy - w * .93, w, w);
+}
+function drawStumpIso(x, y) {
+  const cx = isoX(x + .5, y + .5), cy = isoY(x + .5, y + .5);
+  ctx.fillStyle = "#7a4e2a"; ctx.fillRect(cx - 9, cy - 12, 18, 12);
+  ctx.fillStyle = "#d8b07a"; ctx.beginPath(); ctx.ellipse(cx, cy - 12, 9, 4.5, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = "#b08a54"; ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(cx, cy - 12, 5, 2.4, 0, 0, Math.PI * 2); ctx.stroke();
+}
+function drawFruitIso(x, y) {
+  drawTreeIso(x, y, TREE_ART, 1.45);
+  if ((state.picked || {})[treeKey(x, y)]) return;
+  const cx = isoX(x + .5, y + .5), cy = isoY(x + .5, y + .5), col = fruitKind(x, y) === "apple" ? "#e8302a" : "#ff9a1e";
+  for (const [dx, dy] of [[-14, -50], [8, -58], [16, -42], [-4, -38], [-18, -34]]) {
+    ctx.fillStyle = col; ctx.beginPath(); ctx.arc(cx + dx, cy + dy, 3.4, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,.65)"; ctx.fillRect(cx + dx - 1.5, cy + dy - 2, 1.4, 1.4);
+  }
+}
+function drawCliffIso(x, y) {
+  const B = MINE_TEX.blocks, cave = x === CAVE.x && y === CAVE.y;
+  column(ctx, x, y, 1.6, { side: B, top: B, topShade: "rgba(60,90,40,.35)", sideL: "#8a8090", sideR: "#6a6070", color: "#9a92a0" });
+  if (cave) {                                                   // the mine entrance faces the path (front-left face)
+    const a = { x: isoX(x + .18, y + 1), y: isoY(x + .18, y + 1) }, b = { x: isoX(x + .82, y + 1), y: isoY(x + .82, y + 1) };
+    ctx.fillStyle = "#120c16"; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.lineTo(b.x, b.y - 30);
+    ctx.quadraticCurveTo((a.x + b.x) / 2, (a.y + b.y) / 2 - 52, a.x, a.y - 30); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = "#7a4e2a"; ctx.lineWidth = 3; ctx.stroke();
+  }
+}
+function drawHouseIso() {
+  const i0 = HOUSE.x, i1 = HOUSE.x + HOUSE.w - 1, j0 = HOUSE.y, j1 = HOUSE.y + HOUSE.h - 1, Hh = 2.1, R = 3.3;
+  const a = (i, j, z) => ({ x: isoX(i, j), y: isoY(i, j, z) }), mid = (j0 + j1 + 1) / 2;
+  ctx.fillStyle = "rgba(0,0,0,.22)"; polyFill(ctx, [a(i0, j1 + 1.25, 0), a(i1 + 1.25, j1 + 1.25, 0), a(i1 + 1.25, j0, 0), a(i0, j0, 0)], "rgba(0,0,0,.18)");
+  polyFill(ctx, [a(i0, j1 + 1, 0), a(i1 + 1, j1 + 1, 0), a(i1 + 1, j1 + 1, Hh), a(i0, j1 + 1, Hh)], "#d8b07a");
+  polyFill(ctx, [a(i1 + 1, j1 + 1, 0), a(i1 + 1, j0, 0), a(i1 + 1, j0, Hh), a(i1 + 1, j1 + 1, Hh)], "#b08a54");
+  ctx.strokeStyle = "rgba(120,80,40,.45)"; ctx.lineWidth = 1;
+  for (let k = 1; k < 7; k++) { const z = k * Hh / 7, p1 = a(i0, j1 + 1, z), p2 = a(i1 + 1, j1 + 1, z), p3 = a(i1 + 1, j0, z); ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y); ctx.stroke(); }
+  const dx = HOME.x;                                             // door faces the path, in front of where you wake up
+  polyFill(ctx, [a(dx + .2, j1 + 1, 0), a(dx + .75, j1 + 1, 0), a(dx + .75, j1 + 1, 1.3), a(dx + .2, j1 + 1, 1.3)], "#7a4a2a", "#4a2a1a");
+  ctx.fillStyle = "#ffd860"; const kn = a(dx + .66, j1 + 1, .65); ctx.fillRect(kn.x - 1.5, kn.y - 1.5, 3, 3);
+  for (const wi of [i0 + .2, i1 + .3]) polyFill(ctx, [a(wi, j1 + 1, .8), a(wi + .45, j1 + 1, .8), a(wi + .45, j1 + 1, 1.45), a(wi, j1 + 1, 1.45)], "#8fd0ff", "#5a3a24", 1.5);
+  polyFill(ctx, [a(i1 + 1, j0 + 1.3, .8), a(i1 + 1, j0 + .7, .8), a(i1 + 1, j0 + .7, 1.45), a(i1 + 1, j0 + 1.3, 1.45)], "#6ab0e0", "#5a3a24", 1.5);
+  polyFill(ctx, [a(i1 + .4, j0 + .3, R - .7), a(i1 + .7, j0 + .3, R - .7), a(i1 + .7, j0 + .3, R + .55), a(i1 + .4, j0 + .3, R + .55)], "#8a6a5a", "#5e4a40");
+  polyFill(ctx, [a(i0 - .15, j1 + 1.2, Hh), a(i1 + 1.15, j1 + 1.2, Hh), a(i1 + 1.15, mid, R), a(i0 - .15, mid, R)], "#c84a3a", "#7a2a24", 1.5);
+  polyFill(ctx, [a(i1 + 1, j1 + 1, Hh), a(i1 + 1, j0, Hh), a(i1 + 1, mid, R)], "#e0c08a", "#8a6a4a");
+  ctx.strokeStyle = "rgba(255,200,180,.35)";
+  for (let k = 1; k < 5; k++) { const t = k / 5, jj = j1 + 1.2 - t * (j1 + 1.2 - mid), zz = Hh + t * (R - Hh), p1 = a(i0 - .15, jj, zz), p2 = a(i1 + 1.15, jj, zz); ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke(); }
+}
+function drawSignIso(x, y, text) {
+  const cx = isoX(x + .5, y + .5), cy = isoY(x + .5, y + .5);
+  ctx.fillStyle = "#6a4024"; ctx.fillRect(cx - 2, cy - 30, 4, 30);
+  ctx.font = `bold ${Math.round(10 * Math.min(ui, 1.6))}px "Trebuchet MS", sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  const tw = ctx.measureText(text).width + 12;
+  ctx.fillStyle = "#8a5a34"; roundRect(cx - tw / 2, cy - 44, tw, 17, 4); ctx.fill(); ctx.strokeStyle = "#4a2a1a"; ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.fillStyle = "#fff0b0"; ctx.fillText(text, cx, cy - 35.5);
+}
+const SIGNS = () => [[HOME.x + 2, HOUSE.y + 2, "HOME"], [STATIONS[1].x, STATIONS[1].y - 2, "SHOP"], [CAVE.x + 3, CAVE.y + 1, "MINE"]];
+function drawRippleIso(sp, now) {
+  const cx = isoX(sp.x + .5, sp.y + .5), cy = isoY(sp.x + .5, sp.y + .5, -0.22), t = (now / 1400 + hash2(sp.x, sp.y, 3)) % 1;
+  for (const tt of [t, (t + .5) % 1]) {
+    ctx.strokeStyle = `rgba(230,248,255,${0.8 * (1 - tt)})`; ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.ellipse(cx, cy, 5 + tt * 15, (5 + tt * 15) / 2, 0, 0, Math.PI * 2); ctx.stroke();
+  }
+  if (Math.sin(now / 500 + sp.x * 3) > .92) { ctx.fillStyle = "#e8f8ff"; ctx.fillRect(cx - 2, cy - 6, 4, 3); }
+}
+// screen point (css px on the canvas) → tile
+function screenToTile(px, py, lift = 0) {
+  const ux = cam.x0 + px / cam.s, uy = cam.y0 + py / cam.s + lift;
+  const a = ux / (IW / 2), b = uy / (IH / 2);
+  return { x: Math.floor((a + b) / 2), y: Math.floor((b - a) / 2) };
+}
 const backgrounds = { mine: buildMineBg(null) };
 Promise.all([loadImage("sprites/tiles/mine-bg.png"), loadImage("sprites/tiles/blocks.png")])
-  .then(([bg, blocks]) => { backgrounds.mine = buildMineBg({ bg, blocks }); }).catch(() => {});
+  .then(([bg, blocks]) => { backgrounds.mine = buildMineBg({ bg, blocks }); MINE_TEX.bg = bg; MINE_TEX.blocks = blocks; isoCache.clear(); }).catch(() => {});
 
 
 // ---- Overworld room backgrounds (drawn on demand, a few kept in memory)
@@ -2275,9 +2474,9 @@ const worldBgCache = new Map();
 // "Grass BG" (one room-sized texture) and "Brick Path" (one tile). Until they load the hand-drawn look is used.
 const WORLD_TEX = {};
 Promise.all([loadImage("sprites/tiles/grass-bg.png"), loadImage("sprites/tiles/brick-path.png")])
-  .then(([grass, brick]) => { WORLD_TEX.grass = grass; WORLD_TEX.brick = brick; worldBgCache.clear(); }).catch(() => {});
+  .then(([grass, brick]) => { WORLD_TEX.grass = grass; WORLD_TEX.brick = brick; worldBgCache.clear(); isoCache.clear(); }).catch(() => {});
 loadImage("sprites/tiles/broken-path.png")                  // "Broken Path": ~10% of brick tiles, picked by position
-  .then(im => { WORLD_TEX.broken = im; worldBgCache.clear(); }).catch(() => {});
+  .then(im => { WORLD_TEX.broken = im; worldBgCache.clear(); isoCache.clear(); }).catch(() => {});
 function worldRoomBg(rx, ry) {
   const key = rx + "," + ry;
   if (worldBgCache.has(key)) { const c = worldBgCache.get(key); worldBgCache.delete(key); worldBgCache.set(key, c); return c; }
@@ -2963,10 +3162,10 @@ function drawTooltip() {
   const fs = Math.round(13 * ui), lh = Math.round(17 * ui);
   ctx.font = `bold ${fs}px "Trebuchet MS", sans-serif`;
   const w = Math.max(...lines.map(l => ctx.measureText(l[0]).width)) + 18, h = lines.length * lh + 10;
-  let x = (tx + .5) * TS - w / 2, y = ty * TS - h - 8;
-  const vx0 = view.x + org.x * TS, vy0 = view.y + org.y * TS;
-  x = Math.max(vx0 + 4, Math.min(vx0 + view.w - w - 4, x));
-  if (y < vy0 + 4) y = (ty + 1) * TS + 14 * Math.min(ui, 1.3);
+  const ax = isoX(tx + .5, ty + .5), ay = isoY(tx + .5, ty + .5);
+  let x = ax - w / 2, y = ay - h - 62;
+  x = Math.max(cam.x0 + 4, Math.min(cam.x0 + cam.vw - w - 4, x));
+  if (y < cam.y0 + 4) y = ay + 18;
   const grad = ctx.createLinearGradient(0, y, 0, y + h);
   grad.addColorStop(0, "#4a62b8"); grad.addColorStop(1, "#22307a");
   roundRect(x, y, w, h, 8); ctx.fillStyle = grad; ctx.fill();
@@ -2983,7 +3182,7 @@ function frame(now) {
     {   // which room is on screen? (overworld: the 15x15 screen you're standing in)
       const me = state.players[net.seat];
       if (me.room === "world") { org.x = Math.floor(me.x / W) * W; org.y = Math.floor(me.y / H) * H; } else { org.x = org.y = 0; }
-      const vk = me.room === "world" ? `w${org.x},${org.y}` : me.room;
+      const vk = me.room;
       if (vk !== lastViewKey) { lastViewKey = vk; fadeAt = now; particles = []; }
     }
     for (let i = 0; i < 2; i++) {
@@ -2999,77 +3198,102 @@ function frame(now) {
     else if (actHeld && !menuOpen && now >= actReady) { const f = facing(); if (f && f.kind !== "station") act(); }   // hold to keep swinging
     updateView();
     const room = myRoom(), meP = state.players[net.seat], L = levelOf(room);
-    ctx.save(); ctx.translate(-org.x * TS, -org.y * TS);
-    if (room === "world") ctx.drawImage(worldRoomBg(org.x / W, org.y / H), org.x * TS, org.y * TS, W * TS, H * TS);
-    else {
-      ctx.drawImage(backgrounds.mine, 0, 0, W * TS, H * TS);
-      const dd = depthOf(room);
-      if (dd > 1) { ctx.fillStyle = `rgba(20,10,40,${Math.min(0.4, 0.05 * (dd - 1))})`; ctx.fillRect(0, 0, W * TS, H * TS); }   // deeper = darker
-      drawLabel(`Depth ${dd}`, 2.2 * TS, 1.5 * TS, "#ffe08a", 13);
-      if (L.tunnel) drawTunnel(L.tunnel, now);
-    }
-
-    const fsig = Object.keys(state.felled || {}).join("|") + "#" + Object.keys(state.picked || {}).join("|");      // a tree fell or grew back: redraw the room backgrounds
-    if (fsig !== felledSig) { felledSig = fsig; worldBgCache.clear(); }
-    const things = [];
-    if (isMine(room)) {
-      for (const tx of TORCHES) {
-        const f = Math.random();
-        ctx.fillStyle = "rgba(255,180,80,0.22)"; ctx.beginPath(); ctx.arc(tx * TS + 8 * S, TS + 3 * S, 46 + f * 6, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = f < .5 ? "#ffb02e" : "#ff7a1a"; ctx.fillRect(tx * TS + 6 * S, TS + 1 * S, 4 * S, 4 * S);
-        ctx.fillStyle = "#fff1a8"; ctx.fillRect(tx * TS + 7 * S, TS + (2 + (f < .3 ? 1 : 0)) * S, 2 * S, 2 * S);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = room === "world" ? "#1a2238" : "#0c0810"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.setTransform(cam.s, 0, 0, cam.s, -cam.x0 * cam.s, -cam.y0 * cam.s);
+    ctx.imageSmoothingEnabled = false;
+    // visible tile range (with a margin for tall things)
+    const corners = [[0, 0], [canvas.width, 0], [0, canvas.height], [canvas.width, canvas.height]].map(([px, py]) => screenToTile(px, py));
+    const tx0 = Math.min(...corners.map(c => c.x)) - 2, tx1 = Math.max(...corners.map(c => c.x)) + 3;
+    const ty0 = Math.min(...corners.map(c => c.y)) - 2, ty1 = Math.max(...corners.map(c => c.y)) + 3;
+    const inView = (x, y) => x >= tx0 && x <= tx1 && y >= ty0 && y <= ty1 && (x + y) >= corners[0].x + corners[0].y - 3;
+    const things = [], seen = i => i === net.seat || (net.connected && state.players[i].room === room);
+    if (room === "world") {
+      for (let ry = Math.max(0, Math.floor(ty0 / H)); ry <= Math.min(WR - 1, Math.floor(ty1 / H)); ry++)
+        for (let rx = Math.max(0, Math.floor(tx0 / W)); rx <= Math.min(WR - 1, Math.floor(tx1 / W)); rx++) {
+          const R = isoWorldRoom(rx, ry);
+          if (R.ox + R.cw < cam.x0 || R.ox > cam.x0 + cam.vw || R.oy + R.chh < cam.y0 || R.oy > cam.y0 + cam.vh) continue;
+          drawIsoCanvas(R);
+          for (const sp of fishSpots(rx, ry)) drawRippleIso(sp, now);
+        }
+      for (let y = Math.max(0, ty0); y <= Math.min(WT - 1, ty1); y++) for (let x = Math.max(0, tx0); x <= Math.min(WT - 1, tx1); x++) {
+        const t = worldTile(x, y);
+        if (t === "tree") things.push({ k: x + y, draw: (state.felled || {})[treeKey(x, y)] ? () => drawStumpIso(x, y) : () => drawTreeIso(x, y, isForest(x, y) ? PINE_ART : TREE_ART, isForest(x, y) ? 1.55 : 1.5) });
+        else if (t === "fruit") things.push({ k: x + y, draw: () => drawFruitIso(x, y) });
+        else if (t === "boulder") things.push({ k: x + y, draw: () => atTile(x, y, () => ctx.drawImage(rockSprite(1, 0), x * TS, y * TS, TS, TS)) });
+        else if (t === "cliff" || t === "cave") things.push({ k: x + y, draw: () => drawCliffIso(x, y) });
       }
-      L.rocks.forEach(r => things.push({ y: r.y, draw: () => drawRock(r, now) }));
+      if (inView(HOUSE.x + 1, HOUSE.y + 1)) things.push({ k: HOUSE.x + HOUSE.w - 1 + HOUSE.y + HOUSE.h - 1 - 0.5, draw: drawHouseIso });
+      for (const [x, y, txt] of SIGNS()) if (inView(x, y)) things.push({ k: x + y + .1, draw: () => drawSignIso(x, y, txt) });
+      STATIONS.filter(st => inView(st.x, st.y)).forEach(st => things.push({ k: st.x + st.y, draw: () => atTile(st.x, st.y, () => drawStation(st, now)) }));
+      for (const a of state.animals || []) {
+        if (!inView(a.x, a.y)) continue;
+        const d = animalDisp[a.id] || (animalDisp[a.id] = { x: a.x, y: a.y }), sp = (1000 / ANIMALS[a.kind].step) * 1.8 * dt;
+        d.x += Math.sign(a.x - d.x) * Math.min(Math.abs(a.x - d.x), sp); d.y += Math.sign(a.y - d.y) * Math.min(Math.abs(a.y - d.y), sp);
+        if (Math.abs(a.x - d.x) + Math.abs(a.y - d.y) > 3) { d.x = a.x; d.y = a.y; }
+        things.push({ k: d.x + d.y + 0.004, draw: () => atTile(d.x, d.y, () => drawAnimal(a, now)) });
+      }
+    } else {
+      drawIsoCanvas(isoMine(false));
+      for (const tx of TORCHES) {                                   // flickering torch flames + light on the back wall
+        const f = Math.random(), p0 = { x: isoX(tx + .5, 2), y: isoY(tx + .5, 2, 1.45) };
+        const gl = ctx.createRadialGradient(p0.x, p0.y, 0, p0.x, p0.y, 70 + f * 8); gl.addColorStop(0, "rgba(255,190,90,.35)"); gl.addColorStop(1, "rgba(255,190,90,0)");
+        ctx.fillStyle = gl; ctx.fillRect(p0.x - 80, p0.y - 80, 160, 160);
+        ctx.fillStyle = f < .5 ? "#ffb02e" : "#ff7a1a"; ctx.beginPath(); ctx.ellipse(p0.x, p0.y - 5, 4.5, 7, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "#fff1a8"; ctx.fillRect(p0.x - 1.5, p0.y - 6 + (f < .3 ? 1 : 0), 3, 4);
+      }
+      if (L.tunnel) atTile(L.tunnel.x, L.tunnel.y, () => drawTunnel(L.tunnel, now));
+      L.rocks.forEach(r => things.push({ k: r.x + r.y, draw: () => atTile(r.x, r.y, () => drawRock(r, now)) }));
       for (const e of L.enemies) {
         if (!enemyDisp[e.id]) {                                  // new arrival: puff of dust
           enemyDisp[e.id] = { x: e.x, y: e.y };
           for (let i = 0; i < 14; i++) particles.push({ x: (e.x + .5) * TS, y: (e.y + .7) * TS, vx: (Math.random() - .5) * 5, vy: -Math.random() * 4,
             life: .8, color: i % 2 ? "#d8c8b8" : "#8a7a6a", size: S });
         }
-        const d = enemyDisp[e.id], sp = (1000 / ENEMY_TYPES[e.type].step) * 1.15 * dt;
+        const d = enemyDisp[e.id], sp = (1000 / (e.step || ENEMY_TYPES[e.type].step)) * 1.15 * dt;
         d.x += Math.sign(e.x - d.x) * Math.min(Math.abs(e.x - d.x), sp); d.y += Math.sign(e.y - d.y) * Math.min(Math.abs(e.y - d.y), sp);
         if (Math.abs(e.x - d.x) + Math.abs(e.y - d.y) > 3) { d.x = e.x; d.y = e.y; }
-        things.push({ y: d.y + 0.005, draw: () => drawEnemy(e, now) });
+        things.push({ k: d.x + d.y + 0.005, draw: () => atTile(d.x, d.y, () => drawEnemy(e, now)) });
       }
-    } else {
-      STATIONS.filter(st => inRoom(st.x, st.y, { rx: org.x / W, ry: org.y / H }))
-        .forEach(st => things.push({ y: st.y, draw: () => drawStation(st, now) }));
-    }
-    const viewRoom = { rx: org.x / W, ry: org.y / H };
-    if (room === "world") for (const sp of fishSpots(viewRoom.rx, viewRoom.ry)) drawRipple(sp, now);
-    if (room === "world") for (const a of state.animals || []) {
-      if (a.rx !== viewRoom.rx || a.ry !== viewRoom.ry) continue;
-      const d = animalDisp[a.id] || (animalDisp[a.id] = { x: a.x, y: a.y }), sp = (1000 / ANIMALS[a.kind].step) * 1.8 * dt;
-      d.x += Math.sign(a.x - d.x) * Math.min(Math.abs(a.x - d.x), sp); d.y += Math.sign(a.y - d.y) * Math.min(Math.abs(a.y - d.y), sp);
-      if (Math.abs(a.x - d.x) + Math.abs(a.y - d.y) > 3) { d.x = a.x; d.y = a.y; }
-      things.push({ y: d.y + 0.004, draw: () => drawAnimal(a, now) });
     }
     for (const d of state.drops || [])
-      if (d.room === room && (isMine(room) || inRoom(Math.round(d.x), Math.round(d.y), viewRoom))) things.push({ y: d.y - 0.3, draw: () => drawDrop(d, now) });
+      if (d.room === room && inView(Math.round(d.x), Math.round(d.y))) things.push({ k: d.x + d.y - 0.3, draw: () => atTile(d.x, d.y, () => drawDrop(d, now)) });
     updatePets(dt);
-    [0, 1].forEach(i => { if (petPos[i] && (i === net.seat || (net.connected && sameView(state.players[i], meP)))) things.push({ y: petPos[i].y - 0.02, draw: () => drawPet(i, now) }); });
-    [0, 1].forEach(i => { if (i === net.seat || sameView(state.players[i], meP)) things.push({ y: disp[i].y + 0.01, draw: () => drawPlayer(i, now) }); });
-    things.sort((a, b) => a.y - b.y).forEach(t => t.draw());
-    [0, 1].forEach(i => { if (i === net.seat || sameView(state.players[i], meP)) drawBubble(i, now); });
+    [0, 1].forEach(i => { if (petPos[i] && seen(i)) { const q = petPos[i]; things.push({ k: q.x + q.y - 0.02, draw: () => atTile(q.x, q.y, () => drawPet(i, now)) }); } });
+    [0, 1].forEach(i => { if (seen(i)) things.push({ k: disp[i].x + disp[i].y + 0.01, draw: () => atTile(disp[i].x, disp[i].y, () => drawPlayer(i, now)) }); });
+    things.sort((a, b) => a.k - b.k).forEach(t => t.draw());
+    if (room !== "world") drawIsoCanvas(isoMine(true));               // the low front walls of the mine go over everything
+    [0, 1].forEach(i => { if (seen(i)) atTile(disp[i].x, disp[i].y, () => drawBubble(i, now)); });
 
     particles = particles.filter(p => p.life > 0);
     for (const p of particles) {
-      p.x += p.vx; p.y += p.vy; p.vy += 0.45; p.life -= 0.025;
-      ctx.globalAlpha = Math.max(0, p.life); ctx.fillStyle = p.color; ctx.fillRect(p.x, p.y, p.size, p.size);
+      if (p.ix === undefined) { const q = td2iso(p.x, p.y); p.ix = q.x; p.iy = q.y; }
+      p.ix += p.vx; p.iy += p.vy; p.vy += 0.45; p.life -= 0.025;
+      ctx.globalAlpha = Math.max(0, p.life); ctx.fillStyle = p.color; ctx.fillRect(p.ix, p.iy, p.size, p.size);
     }
     ctx.globalAlpha = 1;
     floaters = floaters.filter(f => now - f.t0 < 1300);
     for (const f of floaters) {
-      const t = (now - f.t0) / 1300;
-      ctx.globalAlpha = 1 - t * t; drawLabel(f.text, f.x, f.y - t * 40, f.color, 17);
+      const t = (now - f.t0) / 1300, q = td2iso(f.x, f.y);
+      ctx.globalAlpha = 1 - t * t; drawLabel(f.text, q.x, q.y - 20 - t * 40, f.color, 17);
     }
     ctx.globalAlpha = 1;
     drawTooltip();
-    ctx.restore();
-    if (now - fadeAt < 240) { ctx.fillStyle = `rgba(10,8,24,${1 - (now - fadeAt) / 240})`; ctx.fillRect(0, 0, W * TS, H * TS); }   // room change fade
+    // screen-space overlays
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    if (room !== "world") {
+      const dd = depthOf(room), cw = canvas.width, chh = canvas.height;
+      const vg = ctx.createRadialGradient(cw / 2, chh / 2, Math.min(cw, chh) * .3, cw / 2, chh / 2, Math.max(cw, chh) * .75);
+      vg.addColorStop(0, "rgba(20,10,30,0)"); vg.addColorStop(1, `rgba(20,10,30,${0.45 + Math.min(0.35, 0.05 * (dd - 1))})`);
+      ctx.fillStyle = vg; ctx.fillRect(0, 0, cw, chh);
+      const fs = Math.round(15 * cam.s * ui);
+      ctx.font = `bold ${fs}px "Trebuchet MS", sans-serif`; ctx.textAlign = "left"; ctx.textBaseline = "top";
+      ctx.lineWidth = Math.max(3, fs / 4); ctx.strokeStyle = "#1a1640"; ctx.strokeText(`Depth ${dd}`, fs * .7, fs * .6);
+      ctx.fillStyle = "#ffe08a"; ctx.fillText(`Depth ${dd}`, fs * .7, fs * .6);
+    }
+    if (now - fadeAt < 240) { ctx.fillStyle = `rgba(10,8,24,${1 - (now - fadeAt) / 240})`; ctx.fillRect(0, 0, canvas.width, canvas.height); }   // room change fade
     drawMinimap(now);
     if (now - lastPanel > 500) { lastPanel = now; render(); }   // keep "where is everyone" text fresh
-    vctx.drawImage(world, view.x * K, view.y * K, view.w * K, view.h * K, 0, 0, canvas.width, canvas.height);
     updateActButton();
     drawPetDock(now);
     checkPickups(now);
@@ -3117,20 +3341,19 @@ function stepInput(now, dt) {
   const me = state.players[net.seat];
   const jm = Math.hypot(joy.x, joy.y), usingJoy = joy.id !== null && jm > 0.22;
   if (me.ko || menuOpen || (!held.length && !usingJoy)) return maybeSendMove(now);
-  let vx = 0, vy = 0, pace = 1;
-  if (usingJoy) {                                   // analog stick: gentle push = slower walk
-    vx = joy.x / jm; vy = joy.y / jm; pace = Math.min(1, 0.45 + (jm - 0.22) * 1.4);
-    me.dir = Math.abs(joy.x) > Math.abs(joy.y) ? (joy.x > 0 ? "right" : "left") : (joy.y > 0 ? "down" : "up");
-  } else {
-    for (const d of held) { vx += DIRS[d][0]; vy += DIRS[d][1]; }
-    me.dir = held[held.length - 1];
-    if (!vx && !vy) return maybeSendMove(now);
-    const len = Math.hypot(vx, vy); vx /= len; vy /= len;
+  let sx = 0, sy = 0, pace = 1;                     // stick / keys give a direction on screen…
+  if (usingJoy) { sx = joy.x / jm; sy = joy.y / jm; pace = Math.min(1, 0.45 + (jm - 0.22) * 1.4); }   // gentle push = slower walk
+  else { for (const d of held) { sx += DIRS[d][0]; sy += DIRS[d][1]; } if (!sx && !sy) return maybeSendMove(now); }
+  let vx = sy + sx / 2, vy = sy - sx / 2;            // …which the isometric view turns into a direction on the grid
+  { const len = Math.hypot(vx, vy); vx /= len; vy /= len; }
+  {                                                 // face the grid direction you're mostly heading (keep it on a tie)
+    const hx = vx > 0 ? "right" : "left", hy = vy > 0 ? "down" : "up";
+    if (Math.abs(vx) > Math.abs(vy) + 0.12) me.dir = hx; else if (Math.abs(vy) > Math.abs(vx) + 0.12) me.dir = hy;
+    else if (me.dir !== hx && me.dir !== hy) me.dir = Math.abs(vx) >= Math.abs(vy) ? hx : hy;
   }
   // walking into the cave mouth / the ladder moves you between the overworld and the mine levels
-  const near = { x: Math.round(me.fx + vx * 0.55), y: Math.round(me.fy + vy * 0.55) };
-  const door = me.room === "world" ? CAVE : ROOMS.mine.door;
-  if (now > doorLock && near.x === door.x && near.y === door.y && Math.abs(me.fx - door.x) < 0.45 + Math.abs(vx) && Math.abs(me.fy - door.y) < 1.2) {
+  const door = me.room === "world" ? CAVE : ROOMS.mine.door;     // both doorways are entered by heading "up" the grid into them
+  if (now > doorLock && Math.abs(me.fx - door.x) < 0.95 && me.fy > door.y && me.fy - door.y < 1.25 && vy < -0.25) {
     if (me.room === "world") return goTo("mine:1", MINE_ARRIVE.x, MINE_ARRIVE.y, "down");
     const d = depthOf(me.room);
     return d <= 1 ? goTo("world", CAVE_EXIT.x, CAVE_EXIT.y, "down") : goTo("mine:" + (d - 1), MINE_ARRIVE.x, MINE_ARRIVE.y, "down");
@@ -3142,8 +3365,8 @@ function stepInput(now, dt) {
   const step = WALK_SPEED * pace * dt;
   let nx = me.fx + vx * step, ny = me.fy + vy * step;
   // gently line you up with rows/columns so it's easy to slip between rocks
-  if (!vy) ny += Math.max(-step * .6, Math.min(step * .6, Math.round(me.fy) - me.fy));
-  if (!vx) nx += Math.max(-step * .6, Math.min(step * .6, Math.round(me.fx) - me.fx));
+  if (Math.abs(vy) < 0.15) ny += Math.max(-step * .6, Math.min(step * .6, Math.round(me.fy) - me.fy));
+  if (Math.abs(vx) < 0.15) nx += Math.max(-step * .6, Math.min(step * .6, Math.round(me.fx) - me.fx));
   if (free(nx, me.fy)) me.fx = nx;
   if (free(me.fx, ny)) me.fy = ny;
   me.x = Math.round(me.fx); me.y = Math.round(me.fy);
@@ -3394,17 +3617,18 @@ window.addEventListener("blur", () => { held.length = 0; actHeld = false; });
 canvas.addEventListener("pointerdown", e => {
   // the canvas is letterboxed (object-fit: contain), so map through the drawn area
   const r = canvas.getBoundingClientRect();
-  const sc = Math.min(r.width / canvas.width, r.height / canvas.height);
-  const ox = r.left + (r.width - canvas.width * sc) / 2, oy = r.top + (r.height - canvas.height * sc) / 2;
-  const tx = Math.floor((view.x + (e.clientX - ox) / sc / K) / TS) + org.x, ty = Math.floor((view.y + (e.clientY - oy) / sc / K) / TS) + org.y;
+  const px = (e.clientX - r.left) * canvas.width / r.width, py = (e.clientY - r.top) * canvas.height / r.height;
   const me = state.players[net.seat];
-  let target = null;
-  if (isMine(me.room)) {
-    const LV = levelOf(me.room), e = enemyAt(LV, tx, ty), rock = rockAt(LV, tx, ty);
-    if (e) target = { kind: "enemy", enemy: e, x: tx, y: ty };
-    else if (rock) target = { kind: "rock", rock, x: tx, y: ty };
+  let target = null, tx = 0, ty = 0;
+  for (const lift of [0, 14, 28, 44]) {          // things stand up off their tile: also try the tiles just below the tap
+    ({ x: tx, y: ty } = screenToTile(px, py, lift));
+    if (isMine(me.room)) {
+      const LV = levelOf(me.room), en = enemyAt(LV, tx, ty), rock = rockAt(LV, tx, ty);
+      if (en) target = { kind: "enemy", enemy: en, x: tx, y: ty };
+      else if (rock) target = { kind: "rock", rock, x: tx, y: ty };
+    } else { const st = stationAt(tx, ty); if (st) target = { kind: "station", station: st, x: tx, y: ty }; }
+    if (target) break;
   }
-  else { const st = stationAt(tx, ty); if (st) target = { kind: "station", station: st, x: tx, y: ty }; }
   if (!target) return;
   if (Math.abs(me.x - target.x) + Math.abs(me.y - target.y) > 1) return floatText("Walk next to it first", "#a8977c");
   me.dir = tx > me.x ? "right" : tx < me.x ? "left" : ty > me.y ? "down" : "up";
@@ -3735,11 +3959,13 @@ function renderHud() {
   const me = state.players[net.seat], other = state.players[1 - net.seat], sh = stash();
   const pct = me.level >= 10 ? 100 : Math.min(100, (me.xp / xpForLevel(me.level)) * 100);
   const hp = Math.round(me.hp / maxHp(me) * 100);
-  document.getElementById("me-chip").innerHTML =
+  const chipHtml =
     `<span class="hs">❤️ <b>${me.hp}<small>/${maxHp(me)}</small></b> <span class="xp hp"><i style="width:${hp}%;background:${hp > 50 ? "#6ae07a" : hp > 25 ? "#f2c14e" : "#e8483e"}"></i></span></span>` +
     `<button class="skills-chip" id="skills-btn" title="Skills">${Object.entries(SKILLS).map(([k, S]) => `<span>${S.icon}<b>${skillOf(me, k).lvl}</b></span>`).join("")}</button>` +
     `<span>🪙 <b>${sh.gold}</b></span><span>⛏️ <b>${PICKAXES[me.pick].name}</b></span><span>🗡️ <b>${DAGGER_NAMES[me.dagger || 0]}</b></span>` +
     (buffs(me) ? `<span>${buffs(me)}</span>` : "");
+  const chip = document.getElementById("me-chip");
+  if (chip.dataset.html !== chipHtml) { chip.dataset.html = chipHtml; chip.innerHTML = chipHtml; }   // don't rebuild buttons mid-tap
   const el = document.getElementById("turn-line");
   if (!net.connected) { el.textContent = "Waiting for your teammate"; return; }
   const foes = levelOf(me.room).enemies.length;

@@ -27,6 +27,7 @@ Players connect directly browser-to-browser (via [PeerJS](https://peerjs.com)), 
 - **Fight**: face an enemy and press **Space** / tap **Attack** (dagger). 🟢 Pebble Slime · 🦇 Cave Bat · 💎 Crystal Golem.
 
 ### Controls & gear
+- **Isometric view**: the world is drawn at an angle (2:1 diamonds) and the camera follows you; **🗺️ Wider / 🔍 Closer** zooms out or in. The joystick and arrow keys move you in screen directions (up = up the screen).
 - Walk with WASD / arrows (diagonals too) or the on-screen joystick on phones. Hold Space / the action button to keep swinging.
 - **Health** ❤️: it does **not** refill on its own — eat food or drink potions. At 0 you're knocked out and wake at home base.
 - **Shop**: Forge (2 ore + 1 Coal → 1 bar), Anvil (forge your next **pickaxe** from bars + a handle, or **dagger** from bars), Workbench (Wood → handles), Cart (🧪 Potion, 🥪 Lunch, 🍀 Charm, 🧨 Dynamite, 🪨 Coal, 🎒 Bigger Backpack).
