@@ -414,7 +414,7 @@
 // ================= Version & fresh assets =================
 // BUILD changes with every release. Asset URLs carry it, so phones can't keep showing stale images,
 // and on load we check whether the server has a newer build than the one running.
-const BUILD = "2026.11.02-0800";
+const BUILD = "2026.11.02-0845";
 const withV = url => /^(https?:|data:|blob:)/.test(url) ? url : url + (url.includes("?") ? "&" : "?") + "v=" + BUILD;
 // ---- Screen fit: detect the phone from its screen size (in points) and pick a layout profile
 function detectDevice() {
@@ -853,7 +853,13 @@ function vnoise(x, y) {
 const inRoom = (x, y, r) => Math.floor(x / W) === r.rx && Math.floor(y / H) === r.ry;
 // Forests: thick woods (the two rooms north of town, plus patches across the map) — chop the trees for Wood
 const FOREST_ROOMS = [{ rx: HOME_ROOM.rx, ry: HOME_ROOM.ry - 1 }, { rx: SHOP_ROOM.rx, ry: SHOP_ROOM.ry - 1 }];
+const forestMemo = new Map();
 function isForest(x, y) {
+  const k = x * 1000 + y; let v = forestMemo.get(k);
+  if (v === undefined) { v = isForestRaw(x, y); forestMemo.set(k, v); }
+  return v;
+}
+function isForestRaw(x, y) {
   if (FOREST_ROOMS.some(r => inRoom(x, y, r))) return true;
   if ([HOME_ROOM, SHOP_ROOM, CAVE_ROOM].some(r => inRoom(x, y, r))) return false;
   return vnoise(x / 11 + 40, y / 11 + 40) > 0.68;
@@ -980,7 +986,17 @@ let net = { peer: null, conn: null, isHost: false, seat: 0, code: "", connected:
 const readJSON = k => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } };
 const writeJSON = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
 const progress = s => s && s.team ? s.team.mined + s.team.fails : -1;
-function save() { if (net.code) writeJSON(saveKey(net.code), state); }
+// Saving writes the whole game to this device's storage, so it's batched: at most every 2 s, and right away when you
+// leave the game or switch away from the browser.
+let lastSaveAt = 0, saveTimer = 0;
+function flushSave() { clearTimeout(saveTimer); saveTimer = 0; lastSaveAt = Date.now(); if (net.code && state) writeJSON(saveKey(net.code), state); }
+function save() {
+  if (!net.code) return;
+  const wait = 2000 - (Date.now() - lastSaveAt);
+  if (wait <= 0) flushSave(); else if (!saveTimer) saveTimer = setTimeout(flushSave, wait);
+}
+addEventListener("pagehide", () => flushSave());
+document.addEventListener("visibilitychange", () => { if (document.hidden) flushSave(); });
 
 // ================= Rules =================
 const xpForLevel = lvl => Math.round(20 * Math.pow(lvl, 1.5));
@@ -2141,7 +2157,7 @@ const td2iso = (X, Y) => ({ x: isoX(X / TS, Y / TS), y: isoY(X / TS, Y / TS) - T
 let cam = { x0: 0, y0: 0, vw: 1, vh: 1, s: 1 };
 function updateView() {
   const stage = document.getElementById("stage");
-  const sw = stage.clientWidth || 1, sh = stage.clientHeight || 1, dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+  const sw = stage.clientWidth || 1, sh = stage.clientHeight || 1, dpr = Math.min(window.devicePixelRatio || 1, 2);
   const cw = Math.round(sw * dpr), ch = Math.round(sh * dpr);
   if (canvas.width !== cw || canvas.height !== ch) { canvas.width = cw; canvas.height = ch; }
   const across = viewMode === "follow" ? 6.2 : 9.5;              // diamonds across the narrower side
@@ -2321,6 +2337,8 @@ function isoWorldRoom(rx, ry) {
   const key = `w${rx},${ry}`;
   if (isoCache.has(key)) { const v = isoCache.get(key); isoCache.delete(key); isoCache.set(key, v); return v; }
   const x0 = rx * W, y0 = ry * H, R = isoCanvas(x0, y0, W, H, 0.5, 0.6), g = R.g;
+  const G = WORLD_TEX.grass;
+  if (G) texQuad(g, G, 0, 0, G.width, G.height, { x: isoX(x0, y0), y: isoY(x0, y0) }, { x: W * IW / 2, y: W * IH / 2 }, { x: -H * IW / 2, y: H * IH / 2 });   // the whole room's grass in one go
   for (let sum = 0; sum <= W + H - 2; sum++) for (let lx = 0; lx < W; lx++) {
     const ly = sum - lx; if (ly < 0 || ly >= H) continue;
     const x = x0 + lx, y = y0 + ly, t = worldTile(x, y);
@@ -2332,22 +2350,21 @@ function isoWorldRoom(rx, ry) {
       continue;
     }
     const lip = ["water"].includes(worldTile(x + 1, y)) || ["water"].includes(worldTile(x, y + 1));
+    if (lip) column(g, x, y, 0, { z0: -0.22, sideL: "#7a5a32", sideR: "#5a4022" });   // a little dirt bank down to the water
     if (t === "path" && WORLD_TEX.brick) {
       const broken = WORLD_TEX.broken && hash2(x, y, 41) < 0.1;
-      column(g, x, y, 0, { z0: -0.22, sideL: "#6a4a2a", sideR: "#4a3220" });
-      if (WORLD_TEX.grass) texTop(g, WORLD_TEX.grass, grassSrc(x, y), x, y, 0);
       texTop(g, broken ? WORLD_TEX.broken : WORLD_TEX.brick, [0, 0, 64, 64], x, y, 0);
       continue;
     }
-    column(g, x, y, 0, { z0: lip ? -0.22 : 0, sideL: "#7a5a32", sideR: "#5a4022",
-      top: WORLD_TEX.grass, src: grassSrc(x, y), color: t === "path" ? "#cfa66c" : ["#6cbf4f", "#66b84a", "#72c455"][Math.floor(hash2(x, y, 3) * 3)] });
+    if (G) { if (lip) texTop(g, G, grassSrc(x, y), x, y, 0); }
+    else polyFill(g, diamond(g, x, y, 0), t === "path" ? "#cfa66c" : ["#6cbf4f", "#66b84a", "#72c455"][Math.floor(hash2(x, y, 3) * 3)]);
     if (t === "flower") {
       const fc = ["#ffffff", "#ffe070", "#ff8ab0", "#b0a0ff"][Math.floor(hash2(x, y, 5) * 4)];
       for (let k = 0; k < 3; k++) { const u = .25 + hash2(x, y, 30 + k) * .5, v = .25 + hash2(x, y, 40 + k) * .5; g.fillStyle = fc; g.beginPath(); g.arc(isoX(x + u, y + v), isoY(x + u, y + v), 2.4, 0, 7); g.fill(); g.fillStyle = "#ffb030"; g.fillRect(isoX(x + u, y + v) - .8, isoY(x + u, y + v) - .8, 1.6, 1.6); }
     }
   }
   isoCache.set(key, R);
-  while (isoCache.size > 6) isoCache.delete(isoCache.keys().next().value);
+  while (isoCache.size > 10) { const k = [...isoCache.keys()].find(k => k[0] === "w"); if (!k) break; isoCache.delete(k); }
   return R;
 }
 // The mine: earthen floor, tall block walls at the back, low ones at the front (drawn after everything else)
@@ -2373,7 +2390,11 @@ function isoMine(front) {
   isoCache.set(key, R);
   return R;
 }
-const drawIsoCanvas = R => { ctx.save(); ctx.imageSmoothingEnabled = true; ctx.drawImage(R.c, R.ox, R.oy, R.cw, R.chh); ctx.restore(); };
+const drawIsoCanvas = R => {     // copy only the part of the ground that's on screen
+  const x0 = Math.max(R.ox, cam.x0), y0 = Math.max(R.oy, cam.y0), x1 = Math.min(R.ox + R.cw, cam.x0 + cam.vw), y1 = Math.min(R.oy + R.chh, cam.y0 + cam.vh);
+  if (x1 <= x0 || y1 <= y0) return;
+  ctx.drawImage(R.c, (x0 - R.ox) * GS, (y0 - R.oy) * GS, (x1 - x0) * GS, (y1 - y0) * GS, x0, y0, x1 - x0, y1 - y0);
+};
 // Scenery that stands up off the ground (and so sorts in front of / behind the players)
 function drawTreeIso(x, y, art, scale = 1.5) {
   const cx = isoX(x + .5, y + .5), cy = isoY(x + .5, y + .5), w = TS * scale;
@@ -2840,7 +2861,7 @@ function drawStation(st, now) {
   drawLabel(st.name, X + TS / 2, Y + TS + 8 * Math.min(ui, 1.3), "#ffe08a", 12);
 }
 
-let lastViewKey = "", fadeAt = 0, lastPanel = 0;
+let lastViewKey = "", fadeAt = 0, lastPanel = 0, nextPrefetch = 0, vignette = null;
 function drawTunnel(t, now) {
   const cx = (t.x + .5) * TS, cy = (t.y + .55) * TS;
   ctx.fillStyle = "#3a2a30"; ctx.beginPath(); ctx.ellipse(cx, cy, TS * .46, TS * .34, 0, 0, Math.PI * 2); ctx.fill();
@@ -3211,12 +3232,18 @@ function frame(now) {
     if (room === "world") {
       for (let ry = Math.max(0, Math.floor(ty0 / H)); ry <= Math.min(WR - 1, Math.floor(ty1 / H)); ry++)
         for (let rx = Math.max(0, Math.floor(tx0 / W)); rx <= Math.min(WR - 1, Math.floor(tx1 / W)); rx++) {
-          const R = isoWorldRoom(rx, ry);
-          if (R.ox + R.cw < cam.x0 || R.ox > cam.x0 + cam.vw || R.oy + R.chh < cam.y0 || R.oy > cam.y0 + cam.vh) continue;
-          drawIsoCanvas(R);
-          for (const sp of fishSpots(rx, ry)) drawRippleIso(sp, now);
+          const x0 = rx * W, y0 = ry * H, bx0 = isoX(x0, y0 + H), bx1 = isoX(x0 + W, y0), by0 = isoY(x0, y0) - IZ, by1 = isoY(x0 + W, y0 + H) + IZ;
+          if (bx1 < cam.x0 || bx0 > cam.x0 + cam.vw || by1 < cam.y0 || by0 > cam.y0 + cam.vh) continue;   // off screen: don't even build it
+          drawIsoCanvas(isoWorldRoom(rx, ry));
+          for (const sp of fishSpots(rx, ry)) {
+            const qx = isoX(sp.x + .5, sp.y + .5), qy = isoY(sp.x + .5, sp.y + .5);
+            if (qx > cam.x0 - 30 && qx < cam.x0 + cam.vw + 30 && qy > cam.y0 - 30 && qy < cam.y0 + cam.vh + 30) drawRippleIso(sp, now);
+          }
         }
+      const vx0 = cam.x0 - IW, vx1 = cam.x0 + cam.vw + IW, vy0 = cam.y0 - IH, vy1 = cam.y0 + cam.vh + 3 * IZ;
       for (let y = Math.max(0, ty0); y <= Math.min(WT - 1, ty1); y++) for (let x = Math.max(0, tx0); x <= Math.min(WT - 1, tx1); x++) {
+        const sxp = isoX(x + .5, y + .5), syp = isoY(x + .5, y + .5);
+        if (sxp < vx0 || sxp > vx1 || syp < vy0 || syp > vy1) continue;
         const t = worldTile(x, y);
         if (t === "tree") things.push({ k: x + y, draw: (state.felled || {})[treeKey(x, y)] ? () => drawStumpIso(x, y) : () => drawTreeIso(x, y, isForest(x, y) ? PINE_ART : TREE_ART, isForest(x, y) ? 1.55 : 1.5) });
         else if (t === "fruit") things.push({ k: x + y, draw: () => drawFruitIso(x, y) });
@@ -3283,15 +3310,29 @@ function frame(now) {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     if (room !== "world") {
       const dd = depthOf(room), cw = canvas.width, chh = canvas.height;
-      const vg = ctx.createRadialGradient(cw / 2, chh / 2, Math.min(cw, chh) * .3, cw / 2, chh / 2, Math.max(cw, chh) * .75);
-      vg.addColorStop(0, "rgba(20,10,30,0)"); vg.addColorStop(1, `rgba(20,10,30,${0.45 + Math.min(0.35, 0.05 * (dd - 1))})`);
-      ctx.fillStyle = vg; ctx.fillRect(0, 0, cw, chh);
+      const vk = `${cw}x${chh}:${Math.min(dd, 8)}`;
+      if (!vignette || vignette.key !== vk) {                  // dark mine edges, drawn once per screen size / depth
+        const c = mkCanvas(Math.ceil(cw / 4), Math.ceil(chh / 4)), g = c.getContext("2d"), w = c.width, h = c.height;
+        const vg = g.createRadialGradient(w / 2, h / 2, Math.min(w, h) * .3, w / 2, h / 2, Math.max(w, h) * .75);
+        vg.addColorStop(0, "rgba(20,10,30,0)"); vg.addColorStop(1, `rgba(20,10,30,${0.45 + Math.min(0.35, 0.05 * (dd - 1))})`);
+        g.fillStyle = vg; g.fillRect(0, 0, w, h); vignette = { key: vk, c };
+      }
+      ctx.imageSmoothingEnabled = true; ctx.drawImage(vignette.c, 0, 0, cw, chh); ctx.imageSmoothingEnabled = false;
       const fs = Math.round(15 * cam.s * ui);
       ctx.font = `bold ${fs}px "Trebuchet MS", sans-serif`; ctx.textAlign = "left"; ctx.textBaseline = "top";
       ctx.lineWidth = Math.max(3, fs / 4); ctx.strokeStyle = "#1a1640"; ctx.strokeText(`Depth ${dd}`, fs * .7, fs * .6);
       ctx.fillStyle = "#ffe08a"; ctx.fillText(`Depth ${dd}`, fs * .7, fs * .6);
     }
     if (now - fadeAt < 240) { ctx.fillStyle = `rgba(10,8,24,${1 - (now - fadeAt) / 240})`; ctx.fillRect(0, 0, canvas.width, canvas.height); }   // room change fade
+    if (room === "world" && now > nextPrefetch) {     // quietly prepare the ground of the rooms around you, one at a time
+      nextPrefetch = now + 250;
+      const prx = Math.floor(meP.x / W), pry = Math.floor(meP.y / H);
+      outer: for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const rx = prx + dx, ry = pry + dy;
+        if (rx < 0 || ry < 0 || rx >= WR || ry >= WR || isoCache.has(`w${rx},${ry}`)) continue;
+        isoWorldRoom(rx, ry); break outer;
+      }
+    }
     drawMinimap(now);
     if (now - lastPanel > 500) { lastPanel = now; render(); }   // keep "where is everyone" text fresh
     updateActButton();
@@ -3878,6 +3919,8 @@ function enterGame() {
   snapDisplay();
   setConnected(net.connected);
   fitStage(); requestAnimationFrame(fitStage);
+  // warm up: draw the townsfolk sprites and the ground around you now, rather than mid-walk
+  NPCS.forEach((n, k) => setTimeout(() => { if (!npcSprites[n.id]) npcSprites[n.id] = lookSprites(n.look); }, 300 + k * 120));
 }
 
 function setConnected(on) {
@@ -4002,7 +4045,7 @@ document.getElementById("create-btn").onclick = () => hostLobby();
 document.getElementById("reopen-btn").onclick = e => hostLobby(e.target.dataset.code);
 document.getElementById("join-btn").onclick = () => joinLobby(document.getElementById("join-code").value);
 document.getElementById("join-code").addEventListener("keydown", e => { if (e.key === "Enter") document.getElementById("join-btn").click(); });
-document.getElementById("leave-btn").onclick = () => { save(); teardown(); showLobby(); };
+document.getElementById("leave-btn").onclick = () => { flushSave(); teardown(); showLobby(); };
 document.getElementById("copy-btn").onclick = async e => {
   const url = location.origin + location.pathname + "?join=" + net.code;
   try { await navigator.clipboard.writeText(url); e.target.textContent = "Copied!"; }
