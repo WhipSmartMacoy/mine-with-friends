@@ -33,6 +33,10 @@ Players connect directly browser-to-browser (via [PeerJS](https://peerjs.com)), 
 - **Backpack** 🎒: tap **Bag** on the health bar (or press **B** / **I**). It starts at 3×3 slots and grows up to 5×5 with Bigger Backpack upgrades from the cart. Potions, lunches, charms and dynamite go here; tap an item to **Use** or **Drop** it.
 - **Forests & wood** 🌲: thick pine woods grow north of town (and in patches across the map). Face a tree and press Space / tap **Chop** for 🪵 Wood; sometimes it falls ("Timber!") and leaves a stump that regrows in a few minutes.
 - **Workbench** 🪚 (shop, far right): carve 3 Wood into a pickaxe handle. **Every new pickaxe needs handles**: 1 up to Iron, 2 for Silver–Ruby, 3 for Diamond and Mythril plus its bars.
+- **Skills** 📈 (tap the ⛏️🍳🎣 chip on the health bar, or press **K**): each goes from level 1 to 10.
+  - ⛏️ **Mining** — your original level: mining (plus fighting, chopping and quests). Raises max health and which rocks you can mine.
+  - 🍳 **Cooking** — cook at the campfire. Higher levels unlock recipes (shrimp & chicken at 1 … Hearty Stew at 7) and burn less food.
+  - 🎣 **Fishing** — face the ripples on water next to the shore (there's a pond at home base) and tap **Fish**. Shrimp from level 1, Trout from 3, Salmon from 6; higher levels catch more often. Cook fish at the campfire.
 - **Hunting & foraging** 🐔🐷🐮: chickens, pigs and cows roam the forests (they run when you get close). Hunt them with your dagger for raw meat. Apple 🍎 and orange 🍊 trees grow at home base and in the woods — pick the fruit (it grows back).
 - **Cooking** 🔥: the Campfire at home base turns ingredients from your backpack into food: Grilled Chicken, Crispy Bacon, Steak, Apple Pie, Fruit Salad and Hearty Stew (full heal). Raw meat can't be eaten.
 - **Quests** 📜: talk to the town folk (face them and press Space / tap Use). A gold **!** means a new quest, **?** means it's ready to hand in. Quests are shared by the team, and both players get the XP.
